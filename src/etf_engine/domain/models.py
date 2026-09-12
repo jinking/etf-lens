@@ -136,3 +136,14 @@ class IndexCatalogEntry(BaseModel):
     index_name: str
     market_symbol: str | None = None
     source_meta: SourceMeta
+
+
+class IndexQuote(BaseModel):
+    index_id: str
+    trade_date: date
+    open: Decimal | None = None
+    high: Decimal | None = None
+    low: Decimal | None = None
+    close: Decimal | None = None
+    currency: str | None = "CNY"
+    source_meta: SourceMeta

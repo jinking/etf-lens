@@ -11,6 +11,7 @@ from etf_engine.jobs.backfill_nav import backfill_nav
 from etf_engine.jobs.compute_mart import compute_mart
 from etf_engine.jobs.sync_calendar import sync_calendar
 from etf_engine.jobs.sync_holdings import sync_holdings
+from etf_engine.jobs.sync_index import sync_index_catalog, sync_index_details, sync_index_map
 from etf_engine.jobs.sync_industry import sync_industry
 from etf_engine.jobs.sync_master import sync_master
 from etf_engine.jobs.sync_nav import sync_nav
@@ -165,6 +166,34 @@ def sync_industry_cmd(
 ):
     result = sync_industry(security_ids=security_ids or None, sleep_seconds=sleep_seconds)
     typer.echo(result)
+
+
+@app.command("sync-index-catalog")
+def sync_index_catalog_cmd():
+    typer.echo(sync_index_catalog())
+
+
+@app.command("sync-index-map")
+def sync_index_map_cmd(
+    security_ids: list[str] = typer.Option(
+        None, "--security-id", "-s", help="指定待映射跟踪指数的 ETF"
+    ),
+    limit: int = typer.Option(50, "--limit", "-n", help="本次最多处理多少只 ETF"),
+    sleep_seconds: float = typer.Option(0.3, "--sleep", help="每只 ETF 之间的间隔秒数"),
+):
+    typer.echo(
+        sync_index_map(security_ids=security_ids or None, limit=limit, sleep_seconds=sleep_seconds)
+    )
+
+
+@app.command("sync-index-details")
+def sync_index_details_cmd(
+    limit_indices: int = typer.Option(None, "--limit", "-n", help="最多处理多少个指数"),
+    quote_trading_days: int = typer.Option(90, "--days", "-d", help="指数行情回溯交易日数"),
+):
+    typer.echo(
+        sync_index_details(limit_indices=limit_indices, quote_trading_days=quote_trading_days)
+    )
 
 
 @app.command("screen")

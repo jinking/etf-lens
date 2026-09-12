@@ -3,6 +3,12 @@ from dataclasses import dataclass
 from etf_engine.sources.akshare.calendar import AkshareTradingCalendarSource
 from etf_engine.sources.akshare.history import AkshareETFHistorySource
 from etf_engine.sources.akshare.holdings import AkshareETFHoldingSource
+from etf_engine.sources.akshare.index_data import (
+    AkshareETFBenchmarkSource,
+    AkshareIndexCatalogSource,
+    AkshareIndexConstituentSource,
+    AkshareIndexQuoteSource,
+)
 from etf_engine.sources.akshare.industry import AkshareStockIndustrySource
 from etf_engine.sources.akshare.nav import AkshareETFNavHistorySource, AkshareETFNavSource
 from etf_engine.sources.akshare.quotes import AkshareETFQuoteSource
@@ -31,6 +37,10 @@ class SourceRegistry:
     holding_source = AkshareETFHoldingSource
     calendar_source = AkshareTradingCalendarSource
     industry_source = AkshareStockIndustrySource
+    index_catalog_source = AkshareIndexCatalogSource
+    index_constituent_source = AkshareIndexConstituentSource
+    index_quote_source = AkshareIndexQuoteSource
+    index_benchmark_source = AkshareETFBenchmarkSource
     share_sources = (SSEETFShareSource, SZSEETFShareSource)
 
 
