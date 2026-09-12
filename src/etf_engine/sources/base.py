@@ -1,13 +1,20 @@
 from abc import ABC, abstractmethod
 from datetime import date
 
+from etf_engine.domain.enums import Exchange
 from etf_engine.domain.models import (
     ETFHolding,
     ETFMaster,
     ETFNav,
     ETFQuote,
     ETFShare,
+    FundIssuance,
     IndexConstituent,
+    IndexValuation,
+    MarginBalance,
+    MarketActivity,
+    MarketTurnover,
+    MarketValuation,
 )
 from etf_engine.domain.quality import DataQualityIssue
 
@@ -127,4 +134,91 @@ class TradingCalendarSource(ABC):
 
     @abstractmethod
     def fetch_trading_days(self, start_date: date, end_date: date) -> list[date]:
+        raise NotImplementedError
+
+
+class MarketTurnoverSource(ABC):
+    """交易所每日概况能力：成交额、换手率、市值。
+
+    一个来源只负责一个交易所（口径互不混用），合计由 mart 派生。
+    """
+
+    #: 该适配器负责的交易所。
+    exchange: Exchange
+    source_name: str = "unknown"
+
+    @abstractmethod
+    def fetch_turnover(self, trade_date: date) -> MarketTurnover | None:
+        raise NotImplementedError
+
+    def fetch_turnover_with_issues(
+        self, trade_date: date
+    ) -> tuple[list[MarketTurnover], list[DataQualityIssue]]:
+        turnover = self.fetch_turnover(trade_date)
+        return ([turnover] if turnover is not None else []), []
+
+
+class MarginBalanceSource(ABC):
+    """两融余额能力（按市场分列，逐交易日）。"""
+
+    source_name: str = "unknown"
+
+    @abstractmethod
+    def fetch_margin(
+        self, start_date: date, end_date: date
+    ) -> tuple[list[MarginBalance], list[DataQualityIssue]]:
+        raise NotImplementedError
+
+
+class MarketValuationSource(ABC):
+    """估值与历史分位能力。"""
+
+    source_name: str = "unknown"
+
+    @abstractmethod
+    def fetch_valuation(
+        self, start_date: date | None = None
+    ) -> tuple[list[MarketValuation], list[DataQualityIssue]]:
+        raise NotImplementedError
+
+
+class MarketActivitySource(ABC):
+    """涨跌家数 / 涨跌停 / 活跃度能力。"""
+
+    source_name: str = "unknown"
+
+    @abstractmethod
+    def fetch_activity(
+        self, trade_date: date | None = None
+    ) -> tuple[list[MarketActivity], list[DataQualityIssue]]:
+        raise NotImplementedError
+
+
+class IndexValuationSource(ABC):
+    """单条指数的估值序列能力（月度 PE 等）。
+
+    只覆盖上游有序列的指数；没有序列的指数如实记 issue，
+    不用"相近指数"或"用 ETF 的 PE 代替"顶替。
+    """
+
+    source_name: str = "unknown"
+
+    @abstractmethod
+    def fetch_index_valuations(
+        self, index_ids: list[str]
+    ) -> tuple[list[IndexValuation], list[DataQualityIssue]]:
+        raise NotImplementedError
+
+
+class FundIssuanceSource(ABC):
+    """新发基金能力（场外增量资金的代理指标）。
+
+    上游一次返回全量列表（含成立日期与募集份额），因此按"全量覆盖式写入"处理，
+    不做逐只请求。
+    """
+
+    source_name: str = "unknown"
+
+    @abstractmethod
+    def fetch_issuances(self) -> tuple[list[FundIssuance], list[DataQualityIssue]]:
         raise NotImplementedError

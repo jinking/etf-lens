@@ -30,6 +30,7 @@ get_etf_flow
 get_etf_holdings
 compare_etfs
 screen_etfs
+get_market_pulse
 ```
 
 ## 现状

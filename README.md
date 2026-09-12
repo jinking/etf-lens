@@ -121,11 +121,29 @@ etf sync-index-catalog   # 指数目录
 etf sync-index-map --limit 50        # ETF→跟踪指数（按基金披露的跟踪标的）
 etf sync-index-details   # 指数成分 + 指数行情
 etf compute-mart         # 计算收益/波动/回撤/流动性/份额变化
+etf sync-market          # 看盘台市场层：成交额 + 两融 + 估值分位 + 涨跌家数 + 新发基金
+etf backfill-index-history  # 宽基指数长历史（位置分位用）
+etf pulse                # 三层看盘状态：流动性 / 量能 / 宽基 ETF
+etf backfill-flow        # 按份额历史回填申赎估算（状态历史热力图的前置）
+etf backfill-pulse       # 逐日回放三层状态（供热力图）
+etf audit                # 自检：架构约束 + 数据不变量（AGENTS.md 的可执行版本）
 etf show 588200.SH
 etf metrics 588200.SH
 etf screen --tag 半导体 --min-aum 2000000000
 etf themes               # 主题聚合（行业/风格）
 etf mcp                  # 以 stdio 启动 MCP server（需 .[agent]）
+```
+
+启动 API 后，浏览器打开 `http://127.0.0.1:8000/watchboard` 即可看盘：
+三层状态卡片 + 成交额柱状图 + 两融曲线 + 涨跌家数 + 宽基 ETF 篮子明细。
+方案与口径说明见 `docs/WATCHBOARD.md`。
+
+日常维护用现成的调度脚本（顺序有依赖，且必须串行——DuckDB 单写进程）：
+
+```bash
+scripts/run_daily.sh              # 每日链路（含看盘台市场层与三层状态）
+scripts/run_weekly.sh             # 每周回补（净值历史 / 指数映射 / 指数长历史 / 成交额）
+scripts/launchd/com.etf-lens.daily.plist   # macOS 定时模板，改路径后 launchctl load
 ```
 
 > `sync-*` 命令需要网络和对应上游接口可用。
@@ -160,6 +178,8 @@ data/
 - `docs/ARCHITECTURE.md`：架构与边界
 - `docs/DATA_MODEL.md`：数据模型
 - `docs/ROADMAP.md`：V1 开发阶段
+- `docs/AUDIT.md`：自检规则（架构约束 + 数据不变量）与"规则必须能被触发"的约定
+- `docs/HANDOVER.md`：交付与交接说明（读这一篇就能接手）
 - `AGENTS.md`：给 Codex / Claude Code / Cursor 等 Agent 的开发入口
 
 ## V1 明确不做

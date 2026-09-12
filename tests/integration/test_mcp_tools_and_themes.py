@@ -111,7 +111,19 @@ def test_tool_registry_covers_the_documented_tools():
         "get_etf_holdings",
         "compare_etfs",
         "screen_etfs",
+        "get_market_pulse",
     }
+
+
+def test_market_pulse_tool_returns_layers_without_chart_series(seeded):
+    pulse = tools.get_market_pulse()
+
+    # 本地没有市场层数据时也必须给出诚实的空状态与缺口说明
+    assert pulse["meta"]["quality"] in {"EMPTY", "PASS"}
+    assert pulse["gaps"]
+    # 界面画图用的长序列不返回给 Agent
+    assert "turnover_series" not in pulse
+    assert "margin_series" not in pulse
 
 
 def test_tools_read_from_the_service_layer(seeded):

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  macOS launchd 模板：每交易日 17:30 跑每日链路。
+
+  docs/TECHNICAL.md §9 明确 V1 不把 Scheduler 绑进 FastAPI，调度交给
+  launchd / systemd timer / cron。使用方法：
+
+    1) 把下面的 /ABSOLUTE/PATH/TO/etf-lens 换成项目真实路径；
+    2) cp scripts/launchd/com.etf-lens.daily.plist ~/Library/LaunchAgents/
+    3) launchctl load ~/Library/LaunchAgents/com.etf-lens.daily.plist
+    4) 立刻验证一次：launchctl start com.etf-lens.daily
+       日志：data/logs/daily.log（stdout/stderr）
+
+  StartCalendarInterval 不会判断交易日：脚本内部的 sync 全部以
+  core.trading_calendar 为准，非交易日会自己回退/跳过，不会写入假日期。
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.etf-lens.daily</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>/ABSOLUTE/PATH/TO/etf-lens/scripts/run_daily.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/ABSOLUTE/PATH/TO/etf-lens</string>
+
+    <key>StandardOutPath</key>
+    <string>/ABSOLUTE/PATH/TO/etf-lens/data/logs/daily.log</string>
+    <key>StandardErrorPath</key>
+    <string>/ABSOLUTE/PATH/TO/etf-lens/data/logs/daily.log</string>
+
+    <!-- 周一至周五 17:30；份额/净值发布时点默认 17 点之后。 -->
+    <key>StartCalendarInterval</key>
+    <array>
+      <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>17</integer><key>Minute</key><integer>30</integer></dict>
+      <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>17</integer><key>Minute</key><integer>30</integer></dict>
+      <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>17</integer><key>Minute</key><integer>30</integer></dict>
+      <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>17</integer><key>Minute</key><integer>30</integer></dict>
+      <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>17</integer><key>Minute</key><integer>30</integer></dict>
+    </array>
+
+    <key>RunAtLoad</key>
+    <false/>
+  </dict>
+</plist>

@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 
-from .enums import QualityStatus
+from .enums import Exchange, QualityStatus
 
 
 class SourceMeta(BaseModel):
@@ -167,4 +167,108 @@ class FundProfile(BaseModel):
     custodian_fee_pct: Decimal | None = None
     tracking_target: str | None = None
     benchmark: str | None = None
+    source_meta: SourceMeta
+
+
+class MarketTurnover(BaseModel):
+    """交易所每日概况（口径：该交易所的股票，含各板块，不含基金债券）。
+
+    ``turnover_amount`` 一律为**元**；上游给亿元时由适配器换算。
+    深交所每日统计不披露换手率，保持 NULL，不用"成交额 ÷ 流通市值"顶替。
+    """
+
+    trade_date: date
+    exchange: Exchange
+    turnover_amount: Decimal | None = None
+    turnover_rate_pct: Decimal | None = None
+    float_market_cap: Decimal | None = None
+    total_market_cap: Decimal | None = None
+    listing_count: Decimal | None = None
+    source_meta: SourceMeta
+
+
+class MarginBalance(BaseModel):
+    """融资融券余额（按市场分列，合计由 mart 派生）。"""
+
+    trade_date: date
+    exchange: Exchange
+    financing_balance: Decimal | None = None
+    financing_buy_amount: Decimal | None = None
+    securities_lending_balance: Decimal | None = None
+    margin_balance: Decimal | None = None
+    source_meta: SourceMeta
+
+
+class MarketValuation(BaseModel):
+    """估值与历史分位。
+
+    分位由上游直接给出（上游自带全历史/近十年分位），属于事实；
+    本系统不做二次推导，也不把不同来源的分位混用，口径写在 ``metric_basis``。
+    """
+
+    index_id: str
+    trade_date: date
+    index_close: Decimal | None = None
+    pe_ttm_median: Decimal | None = None
+    pe_ttm_mean: Decimal | None = None
+    pe_lyr_median: Decimal | None = None
+    pe_lyr_mean: Decimal | None = None
+    quantile_ttm_median_all_history: Decimal | None = None
+    quantile_ttm_median_10y: Decimal | None = None
+    quantile_lyr_median_all_history: Decimal | None = None
+    quantile_lyr_median_10y: Decimal | None = None
+    metric_basis: str | None = None
+    source_meta: SourceMeta
+
+
+class MarketActivity(BaseModel):
+    """全市场涨跌家数与活跃度（情绪温度）。"""
+
+    trade_date: date
+    rising_count: Decimal | None = None
+    falling_count: Decimal | None = None
+    flat_count: Decimal | None = None
+    suspended_count: Decimal | None = None
+    limit_up_count: Decimal | None = None
+    limit_down_count: Decimal | None = None
+    real_limit_up_count: Decimal | None = None
+    real_limit_down_count: Decimal | None = None
+    activity_pct: Decimal | None = None
+    statistic_at: datetime | None = None
+    source_meta: SourceMeta
+
+
+class IndexValuation(BaseModel):
+    """单条指数的市盈率序列（月末观测，上游按加权/等权两种口径提供）。
+
+    与 :class:`MarketValuation`（全 A 口径、上游自带分位）是两件事，不混用。
+    """
+
+    index_id: str
+    trade_date: date
+    pe_static: Decimal | None = None
+    pe_ttm: Decimal | None = None
+    pe_static_median: Decimal | None = None
+    pe_ttm_median: Decimal | None = None
+    pe_static_equal_weight: Decimal | None = None
+    pe_ttm_equal_weight: Decimal | None = None
+    metric_basis: str | None = None
+    source_meta: SourceMeta
+
+
+class FundIssuance(BaseModel):
+    """新发基金事实（一行一只基金）。
+
+    ``raised_shares`` 是募集份额（**亿元**），上游部分基金不披露 → NULL。
+    ``established_date`` 是成立日期：月度规模按它聚合，而不是按募集起始日。
+    """
+
+    fund_code: str
+    fund_name: str | None = None
+    company: str | None = None
+    fund_type: str | None = None
+    subscription_period: str | None = None
+    raised_shares: Decimal | None = None
+    established_date: date | None = None
+    manager: str | None = None
     source_meta: SourceMeta

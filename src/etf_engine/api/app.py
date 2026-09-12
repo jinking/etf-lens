@@ -4,13 +4,16 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from etf_engine.jobs.backfill_index_history import backfill_index_history
 from etf_engine.jobs.backfill_nav import backfill_nav
 from etf_engine.jobs.compute_mart import compute_mart
+from etf_engine.jobs.compute_pulse import compute_market_pulse
 from etf_engine.jobs.sync_calendar import sync_calendar
 from etf_engine.jobs.sync_fund_profile import sync_fund_profile
 from etf_engine.jobs.sync_holdings import sync_holdings
 from etf_engine.jobs.sync_index import sync_index_catalog, sync_index_details, sync_index_map
 from etf_engine.jobs.sync_industry import sync_industry
+from etf_engine.jobs.sync_market import sync_market
 from etf_engine.jobs.sync_master import sync_master
 from etf_engine.jobs.sync_nav import sync_nav
 from etf_engine.jobs.sync_quotes import sync_quotes
@@ -18,6 +21,7 @@ from etf_engine.jobs.sync_shares import sync_shares
 from etf_engine.services.core_metrics_service import ETFCoreMetricsService
 from etf_engine.services.etf_service import ETFService
 from etf_engine.services.research_service import ResearchService
+from etf_engine.services.watchboard_service import WatchboardService
 
 app = FastAPI(
     title="ETF Research Engine",
@@ -27,6 +31,7 @@ app = FastAPI(
 service = ETFService()
 core_metrics_service = ETFCoreMetricsService()
 research_service = ResearchService()
+watchboard_service = WatchboardService()
 WEB_ROOT = Path(__file__).resolve().parents[1] / "web"
 
 
@@ -263,3 +268,60 @@ def list_themes(
 ):
     data = research_service.themes(limit=limit, min_etf_count=min_etf_count)
     return {"data": data, "meta": {"count": len(data)}, "errors": []}
+
+
+@app.get("/watchboard")
+def watchboard_page():
+    """看盘台页面（布局见 docs/WATCHBOARD.md 第 3 节）。"""
+    return FileResponse(WEB_ROOT / "watchboard.html")
+
+
+@app.get("/api/v1/watchboard")
+def watchboard(asof_date: date | None = None, basket_limit: int = Query(default=50, ge=1, le=200)):
+    data = watchboard_service.watchboard(asof_date=asof_date, basket_limit=basket_limit)
+    meta = data.get("meta", {})
+    return {
+        "data": data,
+        "meta": {
+            "asof_date": meta.get("asof_date"),
+            "quality": meta.get("quality", "PASS"),
+            "calculation_version": meta.get("calculation_version"),
+        },
+        "errors": [],
+    }
+
+
+@app.get("/api/v1/watchboard/history")
+def watchboard_history(limit: int = Query(default=120, ge=1, le=500)):
+    data = watchboard_service.history(limit=limit)
+    return {"data": data, "meta": {"count": len(data)}, "errors": []}
+
+
+@app.post("/api/v1/sync/market")
+def sync_market_data(
+    backfill_days: int = Query(default=120, ge=1, le=500),
+    margin_days: int = Query(default=300, ge=30, le=2000),
+):
+    try:
+        result = sync_market(backfill_days=backfill_days, margin_days=margin_days)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"市场层同步失败：{exc}") from exc
+    return {"data": result, "meta": {}, "errors": []}
+
+
+@app.post("/api/v1/backfill/index-history")
+def backfill_index_history_api(years: int = Query(default=6, ge=1, le=20)):
+    try:
+        result = backfill_index_history(years=years)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"指数历史回补失败：{exc}") from exc
+    return {"data": result, "meta": {}, "errors": []}
+
+
+@app.post("/api/v1/compute/pulse")
+def compute_pulse_api(asof_date: date | None = None):
+    try:
+        result = compute_market_pulse(asof=asof_date)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"三层状态计算失败：{exc}") from exc
+    return {"data": result, "meta": {"asof_date": str(result.get("trade_date"))}, "errors": []}

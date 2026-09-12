@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 
+from etf_engine.sources.akshare.activity import AkshareMarketActivitySource
 from etf_engine.sources.akshare.calendar import AkshareTradingCalendarSource
+from etf_engine.sources.akshare.fund_issuance import AkshareFundIssuanceSource
 from etf_engine.sources.akshare.fund_profile import AkshareFundProfileSource
 from etf_engine.sources.akshare.history import AkshareETFHistorySource
 from etf_engine.sources.akshare.holdings import AkshareETFHoldingSource
@@ -9,11 +11,16 @@ from etf_engine.sources.akshare.index_data import (
     AkshareIndexConstituentSource,
     AkshareIndexQuoteSource,
 )
+from etf_engine.sources.akshare.index_valuation import AkshareIndexValuationSource
 from etf_engine.sources.akshare.industry import AkshareStockIndustrySource
+from etf_engine.sources.akshare.margin import AkshareMarginBalanceSource
 from etf_engine.sources.akshare.nav import AkshareETFNavHistorySource, AkshareETFNavSource
 from etf_engine.sources.akshare.quotes import AkshareETFQuoteSource
+from etf_engine.sources.akshare.valuation import AkshareMarketValuationSource
 from etf_engine.sources.master import UnifiedETFMasterSource
+from etf_engine.sources.sse.market_turnover import SSEMarketTurnoverSource
 from etf_engine.sources.sse.shares import SSEETFShareSource
+from etf_engine.sources.szse.market_turnover import SZSEMarketTurnoverSource
 from etf_engine.sources.szse.shares import SZSEETFShareSource
 
 
@@ -43,6 +50,14 @@ class SourceRegistry:
     index_benchmark_source = AkshareFundProfileSource
     fund_profile_source = AkshareFundProfileSource
     share_sources = (SSEETFShareSource, SZSEETFShareSource)
+
+    #: 看盘台（docs/WATCHBOARD.md）市场层能力。
+    market_turnover_sources = (SSEMarketTurnoverSource, SZSEMarketTurnoverSource)
+    margin_source = AkshareMarginBalanceSource
+    valuation_source = AkshareMarketValuationSource
+    market_activity_source = AkshareMarketActivitySource
+    index_valuation_source = AkshareIndexValuationSource
+    fund_issuance_source = AkshareFundIssuanceSource
 
 
 registry = SourceRegistry()

@@ -90,9 +90,48 @@ estimated_net_subscription
 - [x] Source Health（`ops.source_health` 记录最近成败与连续失败次数）
 - [x] Reconciliation（`reconcile_numeric` 用于同日不同来源的收盘价对账，冲突不覆盖）
 - [x] Backups（`data/backups/`，本次基线已备份）
-- [ ] Scheduler templates
+- [x] Scheduler templates（`scripts/run_daily.sh` / `run_weekly.sh` + launchd plist）
 - [ ] Live Smoke Tests
 - [ ] Data Regression Tests
+
+## Phase 7 — 看盘台（Watchboard）
+
+方案：`docs/WATCHBOARD.md`。把《看盘三件套》的三层框架
+（流动性 → 量能 → 宽基 ETF）落到本地数据上。
+
+- [x] 市场层事实表（`core.market_turnover_daily` / `core.margin_balance_daily` /
+      `core.market_valuation_daily` / `core.market_activity_daily`）
+- [x] 四个市场层能力接口与适配器（SSE/SZSE 每日概况、两融、估值分位、涨跌家数）
+- [x] `etf sync-market`（成交额可回补，逐日带超时兜底与退避重试）
+- [x] `etf backfill-index-history`（宽基指数长历史 → 位置分位）
+- [x] `pulse_v1` 规则引擎（`research/market_pulse.py`，纯函数 + 单测）
+- [x] `pulse_v2`：加确认机制（原始信号连续 2 天一致才切换）——v1 实测量能层
+      250 天切换 77 次，综合结论 3.6 天变一次；v2 降到 35 / 36 次，并新增
+      "原始 ≠ 确认" 的待确认标记与状态切换事件列表
+- [x] `mart.market_pulse_daily` / `mart.index_position_daily`
+- [x] Watchboard API（`/api/v1/watchboard`）+ 看盘台页面（`/watchboard`）
+- [x] 篮子覆盖：`sync-fund-profile --limit 200` + `sync-index-map --limit 200`
+      （映射 12 → 241 条，篮子 5 → 38 只；继续扩覆盖仍是 P1）
+- [x] 指数 PE 长历史分位（`core.index_valuation_daily` + `mart.index_valuation_daily`，
+      覆盖上证50 / 沪深300 / 中证500 / 中证1000；创业板指与科创50 上游没有序列，如实标注）
+- [x] MCP 工具 `get_market_pulse`
+- [x] 状态历史热力图：`etf backfill-flow`（申赎历史逐日回放）+ `etf backfill-pulse`
+      （三层状态逐日回放，250 个交易日），前端 4 行着色网格 + 窗口切换 + 悬停看理由
+- [x] 新发基金规模（`core.fund_issuance`，按成立日期聚合成月度规模；
+      近 3 个完整月 vs 前 3 个月的环比，实测 -64.6%）
+- [x] 资金 vs 量能归一化对比图（两融与成交额各自以窗口首日为 100）
+- [x] 篮子净申购累积曲线（按跟踪指数 + 成员覆盖率；缺失日不补 0）
+- [ ] 量能分位支持 3 年 / 5 年窗口切换
+
+## Phase 8 — 自检（Audit）
+
+把 `AGENTS.md` 的"不可破坏约束"从文档纪律变成可执行检查（`docs/AUDIT.md`）：
+
+- [x] 架构规则：业务层不得 import 第三方金融库、依赖方向白名单、能力接口齐备（AST 扫描）
+- [x] 数据规则 8 条：交易日/孤儿行/估算版本/版本混用/0 顶替缺失/来源标注/持仓披露期/沪深成交额成对
+- [x] `etf audit`（`--json` / `--strict` / `--samples`，有 ERROR 时非 0 退出）+ 接入每日链路
+- [x] "每条规则都要能被触发"：违规样本测试 + 真实包零违规回归
+- [x] 首次运行抓到 `560650.SH` 份额被写成 0 并派生假赎回 → 分层修复（validator + 清理 + 测试）
 
 ## 已知缺口（按优先级）
 

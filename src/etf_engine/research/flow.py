@@ -90,3 +90,20 @@ def calculate_flow(shares: pd.Series, nav: pd.Series | None = None) -> FlowMetri
         consecutive_share_inflow_days=inflow,
         consecutive_share_outflow_days=outflow,
     )
+
+
+def cumulative_series(points: list[dict], *, key: str = "daily_net_subscription") -> list[dict]:
+    """把逐日净申购累加成累积曲线。
+
+    ``None``（当天没有数据）**不参与累加也不补 0**：缺失日是"不知道"，
+    不是"没有资金进出"。累加结果里同时带上当天贡献者数量，避免把
+    "参与者变少"误读成"资金流出减少"。
+    """
+    total = 0.0
+    out: list[dict] = []
+    for point in points:
+        value = point.get(key)
+        if value is not None:
+            total += float(value)
+        out.append({**point, "cumulative_net_subscription": total if value is not None else None})
+    return out

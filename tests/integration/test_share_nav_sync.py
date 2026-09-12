@@ -29,6 +29,8 @@ SZSE_FRAME = pd.DataFrame(
         {"基金代码": "159915", "基金简称": "创业板ETF", "当前规模(份)": "1,000,000", "净值": "3.3"},
         # 负份额：必须被 validator 拦下并写入 ops.quality_issue
         {"基金代码": "159999", "基金简称": "坏数据ETF", "当前规模(份)": "-5", "净值": "1"},
+        # 份额 0：上游"该日无数据"的占位值，同样不能当事实（会变成假的巨额赎回）
+        {"基金代码": "159998", "基金简称": "零份额ETF", "当前规模(份)": "0", "净值": "1"},
     ]
 )
 
@@ -123,7 +125,8 @@ def test_share_sync_rejects_bad_rows_and_records_quality_issues(tmp_path, monkey
         ).fetchall()
 
     assert [row[0] for row in rows] == ["159915.SZ", "510010.SH", "510300.SH"]
-    assert ("ERROR", "shares_non_negative", "159999.SZ") in issues
+    assert ("ERROR", "shares_positive", "159999.SZ") in issues
+    assert ("ERROR", "shares_positive", "159998.SZ") in issues
 
 
 def test_share_sync_enriches_missing_nav_from_the_nav_source(tmp_path, monkeypatch):

@@ -1,0 +1,951 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ETF Lens — 看盘台</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&display=swap");
+      :root { --ink:#10261f; --paper:#f5f2e9; --moss:#0c4d3b; --lime:#d8f075; --orange:#ef6b3a; --muted:#6a746f; --line:#cdd1c5; --card:#fffdf7; }
+      * { box-sizing:border-box; }
+      body { margin:0; color:var(--ink); background:var(--paper); font-family:"DM Mono", monospace; }
+      body::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.23; background-image:linear-gradient(rgba(16,38,31,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(16,38,31,.07) 1px,transparent 1px); background-size:28px 28px; }
+      main { width:min(1240px, calc(100% - 40px)); margin:auto; position:relative; padding-bottom:40px; }
+      header { padding:26px 0 20px; display:flex; justify-content:space-between; align-items:center; gap:14px; border-bottom:1px solid var(--ink); }
+      .brand { font-family:"Noto Serif SC", serif; font-size:28px; font-weight:900; letter-spacing:-1px; }
+      .brand em { font-family:"DM Mono",monospace; color:var(--orange); font-size:13px; font-style:normal; margin-left:8px; }
+      .status { font-size:11px; display:flex; gap:14px; align-items:center; color:var(--muted); flex-wrap:wrap; }
+      a { color:var(--moss); }
+      .board { padding:30px 0 10px; display:grid; grid-template-columns:repeat(3,1fr) 1.15fr; gap:16px; align-items:stretch; }
+      .layer { background:var(--card); border:1px solid var(--ink); padding:16px 16px 14px; display:flex; flex-direction:column; gap:10px; }
+      .layer h2 { font:700 17px "Noto Serif SC",serif; margin:0; }
+      .layer .q { color:var(--muted); font-size:11px; }
+      .state { display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:500; }
+      .chip { width:10px; height:10px; border-radius:50%; background:var(--muted); }
+      .state[data-state="STRONG"] { color:#0c4d3b; } .state[data-state="STRONG"] .chip { background:#3f9a5f; }
+      .state[data-state="NEUTRAL"] { color:#8a6a12; } .state[data-state="NEUTRAL"] .chip { background:#d9a520; }
+      .state[data-state="WEAK"] { color:#a33a1c; } .state[data-state="WEAK"] .chip { background:#d1542c; }
+      .state[data-state="UNKNOWN"] { color:var(--muted); } .state[data-state="UNKNOWN"] .chip { background:#b6b8ae; }
+      .facts { display:grid; grid-template-columns:1fr 1fr; gap:8px 10px; margin-top:2px; }
+      .fact { font-size:10px; color:var(--muted); }
+      .fact strong { display:block; color:var(--ink); font-size:14px; margin-top:3px; font-weight:500; }
+      .note { font-size:11px; line-height:1.65; color:var(--muted); margin:0; }
+      .verdict { background:var(--moss); color:#ecf4e3; padding:18px; display:flex; flex-direction:column; justify-content:space-between; gap:12px; box-shadow:8px 8px 0 var(--lime); }
+      .verdict h2 { font:700 15px "Noto Serif SC",serif; margin:0; color:#c3d2c6; }
+      .verdict strong { font:900 clamp(30px,3.4vw,44px) "Noto Serif SC",serif; letter-spacing:-1px; line-height:1.05; display:block; }
+      .verdict p { margin:0; font-size:11px; line-height:1.7; color:#c3d2c6; }
+      section { padding:34px 0 6px; }
+      .head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; border-top:3px solid var(--ink); padding-top:12px; }
+      .head h2 { font:700 22px "Noto Serif SC",serif; margin:0; }
+      .cap { color:var(--muted); font-size:10px; }
+      .grid2 { display:grid; grid-template-columns:1.35fr .65fr; gap:20px; padding-top:16px; }
+      .panel { background:var(--card); border:1px solid var(--line); padding:14px; }
+      .panel h3 { font:700 14px "Noto Serif SC",serif; margin:0 0 10px; }
+      svg { display:block; width:100%; height:auto; overflow:visible; }
+      .legend { display:flex; gap:14px; font-size:10px; color:var(--muted); margin-top:8px; flex-wrap:wrap; }
+      .legend i { display:inline-block; width:18px; height:8px; margin-right:5px; vertical-align:middle; }
+      table { width:100%; border-collapse:collapse; font-size:11px; }
+      th, td { text-align:right; padding:8px 6px; border-bottom:1px solid var(--line); white-space:nowrap; }
+      th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align:left; }
+      th { color:var(--muted); font-weight:500; font-size:10px; }
+      tbody tr:hover { background:#eef1dc; }
+      .up { color:#c24927; } .down { color:#14795c; }
+      .breadth { display:flex; height:26px; border:1px solid var(--ink); margin:6px 0 10px; }
+      .breadth div { display:flex; align-items:center; justify-content:center; font-size:10px; color:#fffdf7; }
+      .breadth .rise { background:#c24927; } .breadth .flat { background:#9aa39c; } .breadth .fall { background:#14795c; }
+      .kv { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; font-size:11px; color:var(--muted); }
+      .kv strong { display:block; color:var(--ink); font-size:15px; margin-top:3px; font-weight:500; }
+      .gaps { border-top:1px solid var(--ink); margin-top:30px; padding-top:14px; font-size:10px; color:var(--muted); line-height:1.8; }
+      .empty { color:var(--muted); font-size:12px; line-height:1.9; padding:20px 0; }
+      .freshness { display:flex; flex-wrap:wrap; gap:6px; padding:10px 0 0; }
+      .fresh { font-size:10px; border:1px solid var(--line); padding:4px 8px; background:var(--card); color:var(--muted); }
+      .fresh b { color:var(--ink); font-weight:500; margin-left:6px; }
+      .fresh[data-lag="0"] { border-color:#9dbfa5; }
+      .fresh[data-lag="stale"] { border-color:var(--orange); color:#a33a1c; }
+      .fresh[data-lag="stale"] b { color:#a33a1c; }
+      .range { display:flex; gap:6px; align-items:center; }
+      .range button { border:1px solid var(--line); background:var(--card); color:var(--muted); font:500 10px "DM Mono",monospace; padding:4px 9px; cursor:pointer; }
+      .range button[aria-pressed="true"] { background:var(--ink); color:#fff; border-color:var(--ink); }
+      .readout { font-size:11px; color:var(--muted); min-height:18px; margin-top:6px; }
+      .readout b { color:var(--ink); font-weight:500; }
+      .filters { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:0 0 12px; }
+      .filters button { border:1px solid var(--line); background:var(--card); color:var(--muted); font:500 10px "DM Mono",monospace; padding:4px 9px; cursor:pointer; }
+      .filters button[aria-pressed="true"] { background:var(--moss); color:#ecf4e3; border-color:var(--moss); }
+      th[data-sort] { cursor:pointer; user-select:none; }
+      th[data-sort]:hover { color:var(--ink); }
+      th[aria-sort]::after { content:" ▲"; font-size:8px; }
+      th[aria-sort="descending"]::after { content:" ▼"; }
+      tbody tr { cursor:pointer; }
+      .drawer { position:fixed; top:0; right:0; width:min(420px,92vw); height:100vh; background:var(--card); border-left:1px solid var(--ink); box-shadow:-12px 0 30px rgba(16,38,31,.12); transform:translateX(102%); transition:transform .18s ease; overflow-y:auto; padding:22px; z-index:20; }
+      .drawer.open { transform:translateX(0); }
+      .drawer h3 { font:700 20px "Noto Serif SC",serif; margin:4px 0 2px; }
+      .drawer .close { position:absolute; top:14px; right:16px; border:1px solid var(--ink); background:var(--lime); padding:4px 9px; cursor:pointer; font:500 11px "DM Mono",monospace; }
+      .drawer .metric-grid { grid-template-columns:1fr 1fr; }
+      .scatter-note { font-size:10px; color:var(--muted); line-height:1.7; }
+      .swatch { display:inline-block; width:10px; height:10px; margin-right:6px; vertical-align:-1px; }
+      .heatmap { display:grid; gap:1px; align-items:center; }
+      .heatmap .rowlabel { font-size:10px; color:var(--muted); padding-right:10px; text-align:right; white-space:nowrap; }
+      .hm-cell { height:22px; background:#d8d8d0; cursor:default; }
+      .hm-cell[data-state="STRONG"] { background:#3f9a5f; }
+      .hm-cell[data-state="NEUTRAL"] { background:#d9a520; }
+      .hm-cell[data-state="WEAK"] { background:#d1542c; }
+      .hm-cell[data-state="UNKNOWN"] { background:#e2e2da; }
+      .hm-cell[data-overall] { height:26px; }
+      .hm-mark { height:9px; background:transparent; }
+      .hm-mark[data-kind="overall"] { background:#10261f; }
+      .hm-mark[data-kind="layer"] { background:#9aa39c; }
+      .hm-mark[data-kind="coverage"] { background:#e2e2da; }
+      .hm-mark[data-kind="pending"] { background:transparent; border:1px solid var(--orange); }
+      .pending-badge { display:inline-block; margin-left:8px; padding:2px 6px; font-size:10px; border:1px solid var(--orange); color:#a33a1c; background:#fff3ec; }
+      .events { display:flex; flex-direction:column; gap:0; margin-top:12px; }
+      .event { display:grid; grid-template-columns:96px 132px 96px 1fr; gap:10px; padding:8px 2px; border-top:1px solid var(--line); font-size:11px; align-items:baseline; }
+      .event:first-child { border-top:1px solid var(--ink); }
+      .event .date { font-size:11px; color:var(--ink); }
+      .event .shift { font-size:11px; }
+      .event .tag { font-size:10px; color:var(--muted); }
+      .event .tag[data-kind="liquidity"] { color:#0c4d3b; }
+      .event .tag[data-kind="volume"] { color:#a33a1c; }
+      .event .tag[data-kind="etf"] { color:#8a6a12; }
+      .event .detail { color:var(--muted); font-size:10px; line-height:1.6; }
+      .event[data-overall="true"] .shift { font-weight:500; }
+      .hm-axis { display:flex; justify-content:space-between; font-size:10px; color:var(--muted); padding-left:88px; margin-top:6px; }
+      .hm-legend { display:flex; gap:12px; flex-wrap:wrap; font-size:10px; color:var(--muted); margin-top:10px; }
+      .hm-legend i { display:inline-block; width:12px; height:12px; margin-right:5px; vertical-align:-2px; }
+      @media(max-width:1000px) { .board { grid-template-columns:1fr 1fr; } .grid2 { grid-template-columns:1fr; } }
+      @media(max-width:640px) { .board { grid-template-columns:1fr; } }
+    </style>
+  </head>
+  <body><main>
+    <header>
+      <div class="brand">ETF Lens <em>看盘台 / WATCHBOARD</em></div>
+      <div class="status">
+        <span id="asof">读取本地数据…</span>
+        <span id="version"></span>
+        <a href="#basket">篮子</a>
+        <a href="/">← 研究台</a>
+      </div>
+    </header>
+    <div class="freshness" id="freshness"></div>
+    <div id="app"><p class="empty">正在读取本地盘面数据…</p></div>
+    <aside class="drawer" id="drawer" aria-hidden="true"></aside>
+  </main>
+  <script>
+    const fmtMoney = v => v == null ? '—' : (Math.abs(v) >= 1e8 ? `${(v/1e8).toFixed(v >= 1e11 || v <= -1e11 ? 0 : 1)} 亿` : `${(v/1e4).toFixed(0)} 万`);
+    const fmtPct = v => v == null ? '—' : `${Number(v).toFixed(2)}%`;
+    const fmtSignedPct = v => v == null ? '—' : `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`;
+    const fmtSignedRatio = v => v == null ? '—' : `${Number(v) >= 0 ? '+' : ''}${(Number(v) * 100).toFixed(2)}%`;
+    const fmtRatio = v => v == null ? '—' : `${(Number(v) * 100).toFixed(0)}%`;
+    const fmtRate = v => v == null ? '—' : `${Number(v).toFixed(2)}%`;
+    // 新发基金的单位是"亿元"，不是元：不能和成交额共用 fmtMoney
+    const fmtYiYuan = v => v == null ? '—' : `${Number(v).toFixed(1)} 亿`;
+    const fmtNum = v => v == null ? '—' : Number(v).toFixed(2);
+    const cls = v => Number(v) >= 0 ? 'up' : 'down';
+    const request = async url => { const r = await fetch(url); const body = await r.json(); if (!r.ok) throw new Error(body.detail || '请求失败'); return body; };
+
+    // 界面状态：数据 + 用户交互（时间窗口 / 排序 / 跟踪指数筛选）
+    const state = {
+      data: null,
+      history: [],
+      range: 120,
+      historyRange: 60,
+      sort: { key: 'estimated_aum', dir: 'desc' },
+      indexFilter: 'ALL',
+    };
+
+    function renderFact(fact) {
+      const value = fact.kind === 'money' ? fmtMoney(fact.value)
+        : fact.kind === 'pct' ? fmtSignedPct(fact.value)
+        : fact.kind === 'rate' ? fmtRate(fact.value)
+        : fact.kind === 'yi_yuan' ? fmtYiYuan(fact.value)
+        : fact.kind === 'ratio' ? fmtRatio(fact.value) : fmtNum(fact.value);
+      return `<div class="fact">${fact.label}<strong>${value}</strong></div>`;
+    }
+
+    function renderLayers(layers) {
+      return layers.map(layer => `
+        <article class="layer">
+          <span class="state" data-state="${layer.state}"><i class="chip"></i>${layer.label} · ${layer.state}${
+            layer.pending ? `<b class="pending-badge">原始信号转${layer.pending.to}，待确认</b>` : ''
+          }</span>
+          <h2>${layer.question}</h2>
+          <div class="facts">${layer.facts.map(renderFact).join('')}</div>
+          <p class="note">${layer.note || ''}</p>
+          <p class="note">覆盖：${layer.coverage}<br>未接入：${layer.unavailable}</p>
+        </article>`).join('');
+    }
+
+    function barChart(series, { width = 760, height = 210, className = 'turnover' } = {}) {
+      if (!series.length) return '<p class="empty">没有成交额序列</p>';
+      const values = series.map(item => item.turnover_amount_total);
+      const max = Math.max(...values);
+      const barW = width / series.length;
+      const bars = series.map((item, index) => {
+        const h = Math.max(1, (item.turnover_amount_total / max) * (height - 26));
+        return `<rect class="bar" data-index="${index}" x="${(index * barW).toFixed(2)}" y="${(height - 18 - h).toFixed(2)}" width="${Math.max(barW - 1.2, 0.8).toFixed(2)}" height="${h.toFixed(2)}" fill="#0c4d3b" opacity="0.62"></rect>`;
+      }).join('');
+      const line = series.map((item, index) => {
+        const h = item.turnover_amount_20d_avg == null ? null : (item.turnover_amount_20d_avg / max) * (height - 26);
+        return h == null ? null : [index * barW + barW / 2, height - 18 - h];
+      }).filter(Boolean);
+      const path = line.length ? `<path d="${line.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(' ')}" fill="none" stroke="#ef6b3a" stroke-width="2.2" stroke-linejoin="round"></path>` : '';
+      const first = series[0].trade_date, last = series[series.length - 1].trade_date;
+      return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${className} 柱状图">
+        <line x1="0" y1="${height - 18}" x2="${width}" y2="${height - 18}" stroke="#10261f" stroke-width="1"></line>
+        ${bars}${path}
+        <text x="0" y="${height - 4}" font-size="10" fill="#6a746f">${first}</text>
+        <text x="${width}" y="${height - 4}" font-size="10" fill="#6a746f" text-anchor="end">${last}</text>
+        <text x="0" y="12" font-size="10" fill="#6a746f">峰值 ${fmtMoney(max)}</text>
+      </svg>`;
+    }
+
+    function lineChart(series, { width = 420, height = 180, key = 'margin_balance_total', color = '#0c4d3b' } = {}) {
+      const points = series.filter(item => item[key] != null);
+      if (points.length < 2) return '<p class="empty">序列不足，无法绘制</p>';
+      const values = points.map(item => item[key]);
+      const max = Math.max(...values), min = Math.min(...values);
+      const span = max - min || 1;
+      const step = width / (points.length - 1);
+      const path = points.map((item, index) => {
+        const x = index * step;
+        const y = height - 20 - ((item[key] - min) / span) * (height - 40);
+        return `${index ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`;
+      }).join(' ');
+      return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${key} 曲线">
+        <path d="${path}" fill="none" stroke="${color}" stroke-width="1.8"></path>
+        <line x1="0" y1="${height - 20}" x2="${width}" y2="${height - 20}" stroke="#cdd1c5"></line>
+        <text x="0" y="12" font-size="10" fill="#6a746f">区间高 ${fmtMoney(max)}</text>
+        <text x="0" y="${height - 24}" font-size="10" fill="#6a746f">区间低 ${fmtMoney(min)}</text>
+        <text x="${width}" y="${height - 6}" font-size="10" fill="#6a746f" text-anchor="end">${points[points.length - 1].trade_date}</text>
+      </svg>`;
+    }
+
+    function normalizedChart(marginSeries, turnoverSeries, { width = 520, height = 190 } = {}) {
+      // 两条线量纲完全不同（元 vs 元，但量级差一个数量级），因此各自以
+      // 窗口首日为 100 归一化后再比——只看相对变化，不看绝对水平。
+      const byDate = new Map();
+      turnoverSeries.forEach(row => byDate.set(row.trade_date, { turnover: row.turnover_amount_total }));
+      marginSeries.forEach(row => {
+        const entry = byDate.get(row.trade_date) || {};
+        entry.margin = row.margin_balance_total;
+        byDate.set(row.trade_date, entry);
+      });
+      const points = [...byDate.entries()]
+        .filter(([, value]) => value.margin != null && value.turnover != null)
+        .sort((a, b) => (a[0] < b[0] ? -1 : 1));
+      if (points.length < 10) return '<p class="empty">两融与成交额的重叠窗口不足，无法对比</p>';
+
+      const marginBase = points[0][1].margin;
+      const turnoverBase = points[0][1].turnover;
+      const series = points.map(([day, value]) => ({
+        day,
+        margin: (value.margin / marginBase) * 100,
+        turnover: (value.turnover / turnoverBase) * 100,
+      }));
+      const all = series.flatMap(item => [item.margin, item.turnover]);
+      const min = Math.min(...all), max = Math.max(...all);
+      const span = max - min || 1;
+      const pad = 30;
+      const x = index => pad + (index / (series.length - 1)) * (width - pad - 10);
+      const y = value => height - 22 - ((value - min) / span) * (height - 40);
+      const path = key => series.map((item, index) =>
+        `${index ? 'L' : 'M'}${x(index).toFixed(2)},${y(item[key]).toFixed(2)}`).join(' ');
+      const last = series[series.length - 1];
+      return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="两融与成交额归一化对比">
+        <line x1="${pad}" y1="${y(100)}" x2="${width - 10}" y2="${y(100)}" stroke="#cdd1c5" stroke-dasharray="4 3"></line>
+        <text x="${pad + 6}" y="12" font-size="10" fill="#6a746f">虚线 = 窗口首日（100）</text>
+        <path d="${path('turnover')}" fill="none" stroke="#ef6b3a" stroke-width="1.8"></path>
+        <path d="${path('margin')}" fill="none" stroke="#0c4d3b" stroke-width="1.8"></path>
+        <line x1="${pad}" y1="${height - 22}" x2="${width - 10}" y2="${height - 22}" stroke="#10261f"></line>
+        <text x="${pad}" y="${height - 6}" font-size="10" fill="#6a746f">${series[0].day}</text>
+        <text x="${width - 10}" y="${height - 6}" font-size="10" fill="#6a746f" text-anchor="end">${last.day}</text>
+        <text x="${width - 10}" y="${y(last.margin) - 6}" font-size="10" fill="#0c4d3b" text-anchor="end">两融 ${last.margin.toFixed(1)}</text>
+        <text x="${width - 10}" y="${y(last.turnover) + 12}" font-size="10" fill="#ef6b3a" text-anchor="end">成交额 ${last.turnover.toFixed(1)}</text>
+      </svg>`;
+    }
+
+    function fundIssuanceChart(monthly, { width = 520, height = 190 } = {}) {
+      const rows = (monthly || []).slice(-12);
+      if (!rows.length) return '<p class="empty">没有新发基金数据（执行 etf sync-market 同步）</p>';
+      const values = rows.map(row => row.raised_shares_total || 0);
+      const max = Math.max(...values, 1);
+      const barW = (width - 20) / rows.length;
+      const bars = rows.map((row, index) => {
+        const h = ((row.raised_shares_total || 0) / max) * (height - 46);
+        return `<rect x="${(10 + index * barW).toFixed(2)}" y="${(height - 24 - h).toFixed(2)}" width="${Math.max(barW - 3, 1).toFixed(2)}" height="${Math.max(h, 1).toFixed(2)}" fill="#0c4d3b" opacity="0.72"><title>${row.month}｜${row.fund_count} 只｜${(row.raised_shares_total || 0).toFixed(1)} 亿</title></rect>`;
+      }).join('');
+      const labels = rows.map((row, index) => index % 3 === 0
+        ? `<text x="${(10 + index * barW + barW / 2).toFixed(2)}" y="${height - 8}" font-size="9" fill="#6a746f" text-anchor="middle">${row.month.slice(2)}</text>` : '').join('');
+      return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="新发基金月度规模">
+        <line x1="10" y1="${height - 24}" x2="${width - 10}" y2="${height - 24}" stroke="#10261f"></line>
+        ${bars}${labels}
+        <text x="10" y="12" font-size="10" fill="#6a746f">峰值 ${max.toFixed(0)} 亿</text>
+      </svg>`;
+    }
+
+    function renderBreadth(activity) {
+      if (!activity) return '<p class="empty">没有涨跌家数数据</p>';
+      const rise = activity.rising_count || 0, flat = activity.flat_count || 0, fall = activity.falling_count || 0;
+      const total = rise + flat + fall || 1;
+      return `<div class="breadth">
+          <div class="rise" style="width:${(rise / total * 100).toFixed(1)}%">涨 ${rise}</div>
+          <div class="flat" style="width:${(flat / total * 100).toFixed(1)}%">${flat}</div>
+          <div class="fall" style="width:${(fall / total * 100).toFixed(1)}%">跌 ${fall}</div>
+        </div>
+        <div class="kv">
+          <div>涨停 / 跌停<strong>${activity.limit_up_count ?? '—'} / ${activity.limit_down_count ?? '—'}</strong></div>
+          <div>活跃度<strong>${activity.activity_pct == null ? '—' : `${Number(activity.activity_pct).toFixed(2)}%`}</strong></div>
+          <div>停牌<strong>${activity.suspended_count ?? '—'}</strong></div>
+          <div>统计时点<strong>${(activity.statistic_at || '').toString().slice(0, 16) || '—'}</strong></div>
+        </div>`;
+    }
+
+    function renderValuation(valuation) {
+      if (!valuation) return '<p class="empty">没有估值数据（执行 etf sync-market 同步）</p>';
+      return `<div class="kv">
+          <div>全 A 滚动 PE 中位数<strong>${fmtNum(valuation.pe_ttm_median)}</strong></div>
+          <div>全 A 静态 PE 中位数<strong>${fmtNum(valuation.pe_lyr_median)}</strong></div>
+          <div>滚动 PE 全历史分位<strong>${fmtRatio(valuation.quantile_ttm_median_all_history)}</strong></div>
+          <div>滚动 PE 近十年分位<strong>${fmtRatio(valuation.quantile_ttm_median_10y)}</strong></div>
+        </div>
+        <p class="note">口径：${valuation.metric_basis || '—'}｜as-of ${valuation.trade_date}｜分位由上游给出，不由本系统推导。</p>`;
+    }
+
+    function renderIndexValuations(rows) {
+      if (!rows || !rows.length) {
+        return '<p class="empty">没有指数估值序列（上游只覆盖部分宽基指数）</p>';
+      }
+      const body = rows.map(row => `
+        <tr>
+          <td>${row.index_name || row.index_id}</td>
+          <td>${fmtNum(row.pe_ttm)}</td>
+          <td>${fmtRatio(row.pe_ttm_percentile_10y)}</td>
+          <td>${fmtRatio(row.pe_ttm_percentile_all_history)}</td>
+        </tr>`).join('');
+      return `<table>
+          <thead><tr><th>宽基指数</th><th>滚动 PE</th><th>近十年分位</th><th>全历史分位</th></tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+        <p class="note">as-of ${rows[0].trade_date}｜月度序列，分位在 ${rows[0].observations_all_history} 条观测内计算；
+          点位分位低而估值分位高，说明"位置在低处但盈利已回落"，两个维度要一起看。</p>`;
+    }
+
+    function quadrantChart(points, { width = 520, height = 320, pad = 34 } = {}) {
+      if (!points || points.length < 10) {
+        return '<p class="empty">量价四象限需要 250 日窗口的位置分位与量比，当前样本不足</p>';
+      }
+      const LOW = 0.35, HIGH = 0.65, EXPAND = 1.1, SHRINK = 0.9;
+      const xMax = 1, yMax = Math.max(1.4, ...points.map(p => p.volume_ratio_5d)) * 1.05;
+      const x = v => pad + v * (width - pad * 2);
+      const y = v => height - pad - (v / yMax) * (height - pad * 2);
+      const grid = [
+        `<rect x="${x(0)}" y="${y(yMax)}" width="${x(LOW) - x(0)}" height="${y(SHRINK) - y(yMax)}" fill="#dff0d8" opacity="0.55"></rect>`,
+        `<rect x="${x(LOW)}" y="${y(SHRINK) - 0}" width="${x(HIGH) - x(LOW)}" height="0"></rect>`,
+        `<rect x="${x(HIGH)}" y="${y(yMax)}" width="${x(1) - x(HIGH)}" height="${y(SHRINK) - y(yMax)}" fill="#f6d9c9" opacity="0.55"></rect>`,
+        `<rect x="${x(0)}" y="${y(SHRINK)}" width="${x(LOW) - x(0)}" height="${y(0) - y(SHRINK)}" fill="#dfe7ee" opacity="0.45"></rect>`,
+        `<rect x="${x(HIGH)}" y="${y(SHRINK)}" width="${x(1) - x(HIGH)}" height="${y(0) - y(SHRINK)}" fill="#f0e6cc" opacity="0.55"></rect>`,
+      ].join('');
+      const dots = points.map((p, index) => {
+        const last = index === points.length - 1;
+        return `<circle class="qdot" data-index="${index}" cx="${x(p.position_pct_250d).toFixed(2)}" cy="${y(p.volume_ratio_5d).toFixed(2)}" r="${last ? 5.5 : 2.6}" fill="${last ? '#ef6b3a' : '#0c4d3b'}" opacity="${last ? 1 : 0.42}"${last ? ' stroke="#10261f" stroke-width="1.2"' : ''}></circle>`;
+      }).join('');
+      return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="量价四象限散点图">
+        ${grid}
+        <line x1="${x(0)}" y1="${y(0)}" x2="${x(1)}" y2="${y(0)}" stroke="#10261f"></line>
+        <line x1="${x(0)}" y1="${y(yMax)}" x2="${x(0)}" y2="${y(0)}" stroke="#10261f"></line>
+        <line x1="${x(LOW)}" y1="${y(yMax)}" x2="${x(LOW)}" y2="${y(0)}" stroke="#cdd1c5" stroke-dasharray="3 3"></line>
+        <line x1="${x(HIGH)}" y1="${y(yMax)}" x2="${x(HIGH)}" y2="${y(0)}" stroke="#cdd1c5" stroke-dasharray="3 3"></line>
+        <line x1="${x(0)}" y1="${y(EXPAND)}" x2="${x(1)}" y2="${y(EXPAND)}" stroke="#cdd1c5" stroke-dasharray="3 3"></line>
+        <line x1="${x(0)}" y1="${y(SHRINK)}" x2="${x(1)}" y2="${y(SHRINK)}" stroke="#cdd1c5" stroke-dasharray="3 3"></line>
+        ${dots}
+        <text x="${x(0.02)}" y="${y(yMax) + 14}" font-size="10" fill="#6a746f">低位放量 · 吸筹/启动</text>
+        <text x="${x(0.98)}" y="${y(yMax) + 14}" font-size="10" fill="#6a746f" text-anchor="end">高位放量 · 出货/赶顶</text>
+        <text x="${x(0.02)}" y="${y(0) - 8}" font-size="10" fill="#6a746f">低位缩量 · 筑底/等待</text>
+        <text x="${x(0.98)}" y="${y(0) - 8}" font-size="10" fill="#6a746f" text-anchor="end">高位缩量 · 惜售/背离</text>
+        <text x="${x(0.5)}" y="${height - 6}" font-size="10" fill="#6a746f" text-anchor="middle">沪深300 位置分位（250 日）→</text>
+        <text x="12" y="${y(yMax) + 2}" font-size="10" fill="#6a746f" transform="rotate(-90 12 ${y(yMax) + 2})" text-anchor="end">量比（5 日）→</text>
+      </svg>`;
+    }
+
+    const SERIES_COLORS = ['#0c4d3b', '#ef6b3a', '#4a7fb5', '#8a6a12', '#7a5ea8', '#3f9a5f'];
+
+    function basketFlowChart(series, { width = 760, height = 260, pad = 46 } = {}) {
+      const lines = (series || []).filter(item => item.points.length > 1);
+      if (!lines.length) {
+        return '<p class="empty">还没有篮子成员的日度申赎数据：深市份额只有当天快照，需要逐日积累。</p>';
+      }
+      const dates = [...new Set(lines.flatMap(line => line.points.map(p => p.trade_date)))].sort();
+      const values = lines.flatMap(line => line.points.map(p => p.cumulative_net_subscription).filter(v => v != null));
+      const max = Math.max(...values, 0), min = Math.min(...values, 0);
+      const span = max - min || 1;
+      const x = day => pad + (dates.indexOf(day) / Math.max(dates.length - 1, 1)) * (width - pad - 12);
+      const y = value => height - 26 - ((value - min) / span) * (height - 52);
+      const paths = lines.map((line, index) => {
+        const d = line.points
+          .filter(point => point.cumulative_net_subscription != null)
+          .map((point, i) => `${i ? 'L' : 'M'}${x(point.trade_date).toFixed(2)},${y(point.cumulative_net_subscription).toFixed(2)}`)
+          .join(' ');
+        return `<path class="flow-line" data-index="${index}" d="${d}" fill="none" stroke="${SERIES_COLORS[index % SERIES_COLORS.length]}" stroke-width="1.9"></path>`;
+      }).join('');
+      const zero = `<line x1="${pad}" y1="${y(0)}" x2="${width - 12}" y2="${y(0)}" stroke="#cdd1c5" stroke-dasharray="4 3"></line>
+        <text x="${pad + 4}" y="${y(0) - 5}" font-size="10" fill="#6a746f">0（净申购 / 净赎回分界）</text>`;
+      return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="篮子净申购累积曲线">
+        ${zero}${paths}
+        <line x1="${pad}" y1="${height - 26}" x2="${width - 12}" y2="${height - 26}" stroke="#10261f"></line>
+        <text x="${pad}" y="${height - 8}" font-size="10" fill="#6a746f">${dates[0]}</text>
+        <text x="${width - 12}" y="${height - 8}" font-size="10" fill="#6a746f" text-anchor="end">${dates[dates.length - 1]}</text>
+        <text x="${pad - 4}" y="${y(max) + 4}" font-size="10" fill="#6a746f" text-anchor="end">${(max / 1e8).toFixed(0)} 亿</text>
+        <text x="${pad - 4}" y="${y(min) + 4}" font-size="10" fill="#6a746f" text-anchor="end">${(min / 1e8).toFixed(0)} 亿</text>
+      </svg>`;
+    }
+
+    function basketFlowTable(series) {
+      if (!series || !series.length) return '';
+      const rows = series.map((line, index) => {
+        const points = line.points;
+        const tail5 = points.slice(-5).reduce((acc, p) => acc + (p.daily_net_subscription || 0), 0);
+        return `<tr>
+            <td><span class="swatch" style="background:${SERIES_COLORS[index % SERIES_COLORS.length]}"></span>${line.index_name}</td>
+            <td>${line.contributor_count} / ${line.member_count} 只</td>
+            <td class="${cls(line.cumulative_net_subscription)}">${fmtMoney(line.cumulative_net_subscription)}</td>
+            <td class="${cls(tail5)}">${fmtMoney(tail5)}</td>
+          </tr>`;
+      }).join('');
+      return `<table style="margin-top:12px">
+          <thead><tr><th>跟踪指数</th><th>有日度数据的成员</th><th>窗口累积净申购</th><th>近 5 日</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    function renderFreshness(rows) {
+      const target = document.querySelector('#freshness');
+      if (!rows || !rows.length) { target.innerHTML = ''; return; }
+      target.innerHTML = rows.map(row => {
+        const lag = row.lag_trading_days;
+        const state = lag === null ? 'unknown' : lag === 0 ? '0' : 'stale';
+        const suffix = lag === null ? '' : lag === 0 ? ' · 当日' : ` · 滞后 ${lag} 个交易日`;
+        return `<span class="fresh" data-lag="${state}">${row.dataset}<b>${row.asof_date || '—'}${suffix}</b></span>`;
+      }).join('');
+    }
+
+    function heatmap(rows, transitions) {
+      if (!rows || !rows.length) {
+        return '<p class="empty">还没有状态历史：先执行 etf backfill-flow 与 etf backfill-pulse。</p>';
+      }
+      const transitionByDate = new Map((transitions || []).map(item => [item.trade_date, item]));
+      const stateOf = row => ({
+        pending: ['liquidity', 'volume', 'etf'].some(key =>
+          row[`${key}_raw_state`] && row[`${key}_state`] !== row[`${key}_raw_state`]),
+      });
+      const definitions = [
+        ['liquidity_state', '① 流动性', 'liquidity_note'],
+        ['volume_state', '② 量能', 'volume_note'],
+        ['etf_state', '③ 宽基 ETF', 'etf_note'],
+        ['overall_state', '综合结论', null],
+      ];
+      const overallMap = { '偏多': 'STRONG', '中性观望': 'NEUTRAL', '防守': 'WEAK', '数据不足': 'UNKNOWN' };
+      const overallCell = (state, index, row) =>
+        `<div class="hm-cell" data-overall="1" data-row="3" data-index="${index}" data-state="${overallMap[state] || 'UNKNOWN'}"></div>`;
+      const body = definitions.map(([key, label, noteKey], rowIndex) => {
+        const cells = rows.map((row, index) => {
+          const state = row[key] || 'UNKNOWN';
+          const dataState = rowIndex === 3 ? (overallMap[state] || 'UNKNOWN') : state;
+          return rowIndex === 3
+            ? overallCell(state, index, row)
+            : `<div class="hm-cell" data-row="${rowIndex}" data-index="${index}" data-state="${dataState}"></div>`;
+        }).join('');
+        return `<div class="rowlabel">${label}</div>${cells}`;
+      }).join('');
+      const columns = `grid-template-columns:88px repeat(${rows.length}, minmax(3px, 1fr));`;
+      const markerCells = rows.map(row => {
+        const transition = transitionByDate.get(row.trade_date);
+        let kind = 'none';
+        if (transition) {
+          kind = transition.kind === 'coverage' ? 'coverage'
+            : transition.overall_changed ? 'overall' : 'layer';
+        } else if (stateOf(row).pending) {
+          kind = 'pending';
+        }
+        const title = transition
+          ? `${row.trade_date} ${transition.significance}`
+          : kind === 'pending' ? `${row.trade_date} 原始信号已变、待确认` : '';
+        return `<div class="hm-cell hm-mark" data-kind="${kind}" data-mark="${row.trade_date}" title="${title}"></div>`;
+      }).join('');
+      const markerRow = `<div class="rowlabel" style="font-size:9px">边际变化</div>${markerCells}`;
+      return `<div class="heatmap" style="${columns}">${markerRow}${body}</div>
+        <div class="hm-axis"><span>${rows[0].trade_date}</span><span>${rows[rows.length - 1].trade_date}</span></div>`;
+    }
+
+    function renderEvents(transitions) {
+      const events = (transitions || [])
+        .filter(item => item.kind === 'market')
+        .slice(-14)
+        .reverse();
+      if (!events.length) return '<p class="empty">还没有状态切换事件。</p>';
+      const layerText = { liquidity: '流动性', volume: '量能', etf: '宽基 ETF' };
+      return `<div class="events">` + events.map(event => {
+        const shift = event.overall_changed
+          ? `${event.from_state} → ${event.to_state}`
+          : '结论不变';
+        const lead = event.leading_layer ? layerText[event.leading_layer] : '多层共振';
+        const detail = event.changed_layers
+          .map(layer => `${layer.label.replace(/[①②③]\s*/g, '')} ${layer.from}→${layer.to}：${(layer.note || '').slice(0, 60)}`)
+          .join('；');
+        return `<div class="event" data-overall="${event.overall_changed}">
+            <span class="date">${event.trade_date}</span>
+            <span class="shift">${shift}</span>
+            <span class="tag" data-kind="${event.leading_layer || ''}">${event.significance}</span>
+            <span class="detail">${lead}先行｜${detail}</span>
+          </div>`;
+      }).join('') + '</div>';
+    }
+
+    function render(data) {
+      const meta = data.meta || {};
+      document.querySelector('#asof').textContent = meta.asof_date
+        ? `数据截至 ${meta.asof_date}｜成交额口径：${meta.turnover_scope || '沪深两市'}`
+        : '本地还没有盘面数据';
+      document.querySelector('#version').textContent = meta.calculation_version
+        ? `规则 ${meta.calculation_version}` : '';
+
+      if (!data.layers || !data.layers.length) {
+        document.querySelector('#app').innerHTML =
+          `<p class="empty">本地还没有三层状态。<br><br>${meta.hint || ''}<br><br>${(data.gaps || []).map(g => `· ${g}`).join('<br>')}</p>`;
+        return;
+      }
+
+      const verdictNote = `${meta.strong_layers ?? '—'} / ${meta.known_layers ?? '—'} 层偏强 · 规则 ${meta.calculation_version}`;
+      document.querySelector('#app').innerHTML = `
+        <section class="board">
+          ${renderLayers(data.layers)}
+          <aside class="verdict">
+            <h2>三层共振结论</h2>
+            <div>
+              <strong>${meta.overall_state}</strong>
+              <p>${verdictNote}</p>
+            </div>
+            <p>${meta.quadrant_label || '量价象限需要成交额与指数位置同时可得'}</p>
+            <p>这是状态判断，不是收益率承诺，也不构成投资建议。</p>
+          </aside>
+        </section>
+
+        <section id="history">
+          <div class="head">
+            <h2>三层状态历史</h2>
+            <span class="cap">规则 ${meta.calculation_version || 'pulse'} 逐日回放 · 每格一天 · 悬停看当日理由</span>
+          </div>
+          <div class="panel" style="margin-top:16px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+              <h3 id="heatmap-title">状态热力图</h3>
+              <div class="range" id="heatmap-range">
+                <button data-range="30">30 日</button>
+                <button data-range="60">60 日</button>
+                <button data-range="120">120 日</button>
+                <button data-range="250">250 日</button>
+              </div>
+            </div>
+            <div id="heatmap"></div>
+            <div class="readout" id="heatmap-readout">悬停任意格子查看当日的三层判定与理由</div>
+            <div class="hm-legend">
+              <span><i style="background:#3f9a5f"></i>强（STRONG）</span>
+              <span><i style="background:#d9a520"></i>中（NEUTRAL）</span>
+              <span><i style="background:#d1542c"></i>弱（WEAK）</span>
+              <span><i style="background:#e2e2da"></i>数据不足（UNKNOWN）</span>
+              <span><i style="background:#10261f;height:9px"></i>结论切换</span>
+              <span><i style="background:#9aa39c;height:9px"></i>单层变化</span>
+              <span><i style="border:1px solid var(--orange);height:9px"></i>原始信号已变、待确认</span>
+            </div>
+            <p class="scatter-note">综合结论行按文档 4.2 打分：达成 STRONG 的层数 ≥2 偏多、=1 中性观望、=0 防守；
+              已知层不足两层记"数据不足"。历史行是<b>用今天存下的事实按同一条规则重算</b>的，不是当时写下的快照；
+              宽基 ETF 层在申赎历史回填之前（2026-07-20 前）没有数据，显示为"数据不足"。</p>
+            <h3 style="margin-top:22px">状态切换事件（最近的结论与单层变化）</h3>
+            <p class="scatter-note" style="margin-bottom:0">pulse_v2 的确认机制要求信号连续两天一致才切换，
+              所以"边际变化"分两步：先是<b>原始信号已变、待确认</b>，确认后才成为事件。
+              文档的传导链是"流动性先行 → 量能确认 → 宽基 ETF 验证"，因此领变层是谁，比结论变没变更有信息量。</p>
+            <div id="events"></div>
+          </div>
+        </section>
+
+        <section>
+          <div class="head">
+            <h2>资金与量能</h2>
+            <span class="cap">成交额口径为沪深两市股票 · 悬停柱看当日明细</span>
+          </div>
+          <div class="grid2">
+            <div class="panel">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+                <h3 id="turnover-title">每日成交额</h3>
+                <div class="range" id="range-switch">
+                  <button data-range="60">60 日</button>
+                  <button data-range="120">120 日</button>
+                  <button data-range="250">250 日</button>
+                </div>
+              </div>
+              <div id="turnover-chart"></div>
+              <div class="legend"><span><i style="background:#0c4d3b"></i>当日成交额</span><span><i style="background:#ef6b3a;height:3px"></i>20 日均额</span></div>
+              <div class="readout" id="turnover-readout">悬停柱状图查看当日明细</div>
+            </div>
+            <div class="panel">
+              <h3>涨跌家数与活跃度</h3>
+              ${renderBreadth(data.activity)}
+              <h3 style="margin-top:18px">两融余额（沪深合计）</h3>
+              ${lineChart(data.margin_series)}
+            </div>
+          </div>
+          <div class="grid2">
+            <div class="panel">
+              <h3>资金 vs 量能：归一化对比</h3>
+              ${normalizedChart(data.margin_series, data.turnover_series)}
+              <p class="scatter-note">两条线量纲不同，各自以窗口首日为 100 归一化，只看相对变化。
+                文档的传导链是"钱先来、量后到"：两融先抬升而成交额还没跟上，说明资金在进、情绪没热；
+                成交额上来而两融不动，说明是场内资金在滚，不是增量。</p>
+            </div>
+            <div class="panel">
+              <h3>新发基金成立规模（月度）</h3>
+              ${fundIssuanceChart((data.fund_issuance || {}).monthly)}
+              <div class="kv" style="margin-top:10px">
+                <div>近 3 个完整月<strong>${fmtYiYuan((data.fund_issuance || {}).recent_3m_raised_shares)}</strong></div>
+                <div>前 3 个完整月<strong>${fmtYiYuan((data.fund_issuance || {}).previous_3m_raised_shares)}</strong></div>
+                <div>环比变化<strong>${fmtSignedPct((data.fund_issuance || {}).change_pct)}</strong></div>
+                <div>完整月截至<strong>${(data.fund_issuance || {}).latest_complete_month || '—'}</strong></div>
+              </div>
+              <p class="scatter-note">口径：${(data.fund_issuance || {}).basis || '—'}｜单位${(data.fund_issuance || {}).unit || '亿元'}｜
+                按<b>成立日期</b>聚合，只统计完整月（${(data.fund_issuance || {}).current_month || ''} 未录完不计入）。
+                这是场外增量资金的<b>代理指标</b>，只展示不打分。</p>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div class="head">
+            <h2>位置与估值</h2>
+            <span class="cap">量价四象限 = 文档 2.4 框架；点位分位与估值分位是两个维度</span>
+          </div>
+          <div class="grid2">
+            <div class="panel">
+              <h3>量价四象限（近 ${(data.quadrant_points || []).length} 个交易日）</h3>
+              <div id="quadrant-chart">${quadrantChart(data.quadrant_points)}</div>
+              <div class="readout" id="quadrant-readout">${meta.quadrant_label || ''}</div>
+              <p class="scatter-note">每个点是一天：横轴是沪深300 当日位置分位（250 日窗口），纵轴是当日相对前 5 日均值的量比。
+                橙点是当前值。四象限只做定性提示，不参与打分。</p>
+            </div>
+            <div class="panel">
+              <h3>全 A 估值分位</h3>
+              ${renderValuation(data.valuation)}
+              <h3 style="margin-top:18px">宽基指数估值分位（月度）</h3>
+              ${renderIndexValuations(data.index_valuations)}
+            </div>
+          </div>
+        </section>
+
+        <section id="basket">
+          <div class="head">
+            <h2>宽基 ETF 篮子</h2>
+            <span class="cap">成员由基金披露的跟踪指数决定 · 点表头排序 · 点击行看该 ETF 指标</span>
+          </div>
+          <div class="panel" style="margin-top:16px">
+            <h3>篮子净申购累积（按跟踪指数）</h3>
+            <div id="basket-flow-chart">${basketFlowChart((data.basket_flow || {}).series)}</div>
+            ${basketFlowTable((data.basket_flow || {}).series)}
+            <div class="readout" id="basket-flow-readout">悬停曲线查看当日的累积净申购</div>
+            <p class="scatter-note">口径：${(data.basket_flow || {}).metric || '—'}（估算值，
+              <b>${(data.basket_flow || {}).calculation_version || 'flow_v1'}</b>）｜
+              窗口 ${((data.basket_flow || {}).window || {}).start || '—'} ~ ${((data.basket_flow || {}).window || {}).end || '—'}。
+              逐日净申购需要"连续两个交易日的份额"，深市 ETF 的份额只有当天快照、要逐日积累，
+              因此覆盖率低的指数曲线不代表全部资金。${
+                (((data.basket_flow || {}).skipped_index_names) || []).length
+                  ? `${((data.basket_flow || {}).skipped_index_names || []).join('、')} 目前完全没有日度数据，暂不画线；`
+                  : ''}
+              缺失日既不补 0 也不插值。</p>
+          </div>
+          <div class="panel" style="margin-top:16px">
+            <div class="filters" id="basket-filters"></div>
+            <div id="basket-table"></div>
+          </div>
+        </section>
+
+        <div class="gaps">
+          <strong>口径与缺口（必须一起看）</strong><br>
+          ${(data.gaps || []).map(item => `· ${item}`).join('<br>')}
+          <br><br>所有数字都可追溯到 core / mart 表的来源与 as-of 日期；缺失显示 —，不显示 0。
+        </div>`;
+
+      wireTurnoverChart();
+      wireHeatmap();
+      const events = document.querySelector('#events');
+      if (events) events.innerHTML = renderEvents(data.transitions);
+      wireQuadrant();
+      wireBasket();
+      wireBasketFlow();
+    }
+
+    // ---------------------------------------------------------------- 交互
+
+    async function openDrawer(securityId) {
+      const drawer = document.querySelector('#drawer');
+      drawer.innerHTML = `<button class="close" type="button">关闭</button><p class="empty">读取 ${securityId} …</p>`;
+      drawer.classList.add('open');
+      drawer.setAttribute('aria-hidden', 'false');
+      drawer.querySelector('.close')?.addEventListener('click', closeDrawer);
+      try {
+        const [snapshot, metrics] = await Promise.all([
+          request(`/api/v1/etfs/${securityId}`),
+          request(`/api/v1/etfs/${securityId}/core-metrics`),
+        ]);
+        const m = metrics.data;
+        drawer.innerHTML = `
+          <button class="close" type="button">关闭</button>
+          <span class="cap">${securityId} · 行情 ${snapshot.data.quote?.trade_date || '—'} · 指标 ${m.asof_date || '—'}</span>
+          <h3>${snapshot.data.quote?.name || m.name || securityId}</h3>
+          <h4 class="metric-title">规模与资金</h4>
+          <div class="metric-grid">
+            <div class="metric">披露规模<strong>${fmtMoney(m.reported_aum)}</strong></div>
+            <div class="metric">估算规模<strong>${fmtMoney(m.estimated_aum)}</strong></div>
+            <div class="metric">20 日份额变化<strong>${fmtMoney(m.share_change_20d)}</strong></div>
+            <div class="metric">20 日估算净申购<strong>${fmtMoney(m.estimated_net_subscription_20d)}</strong></div>
+          </div>
+          <h4 class="metric-title">交易与折溢价</h4>
+          <div class="metric-grid">
+            <div class="metric">折溢价率<strong>${fmtSignedRatio(m.premium_discount_pct)}</strong></div>
+            <div class="metric">日成交额<strong>${fmtMoney(m.turnover_amount)}</strong></div>
+            <div class="metric">20 日均额<strong>${fmtMoney(m.avg_turnover_amount_20d)}</strong></div>
+            <div class="metric">买卖价差<strong>${fmtSignedRatio(m.bid_ask_spread_pct)}</strong></div>
+          </div>
+          <h4 class="metric-title">表现与风险</h4>
+          <div class="metric-grid">
+            <div class="metric">20 日收益<strong>${fmtSignedRatio(m.market_return_20d)}</strong></div>
+            <div class="metric">60 日收益<strong>${fmtSignedRatio(m.market_return_60d)}</strong></div>
+            <div class="metric">60 日最大回撤<strong>${fmtSignedRatio(m.max_drawdown_60d)}</strong></div>
+            <div class="metric">60 日跟踪误差<strong>${fmtSignedRatio(m.tracking_error_60d)}</strong></div>
+          </div>
+          <h4 class="metric-title">暴露</h4>
+          <div class="metric-grid">
+            <div class="metric">跟踪指数<strong>${m.tracking_index?.name || '—'}</strong></div>
+            <div class="metric">Top10 集中度<strong>${fmtSignedRatio(m.top10_concentration)}</strong></div>
+          </div>
+          <p class="scatter-note">缺失指标显示 — 并附原因：${Object.entries(m.quality?.reasons || {}).map(([k, v]) => `${k}: ${v}`).join(' · ') || '无'}</p>`;
+        drawer.querySelector('.close')?.addEventListener('click', closeDrawer);
+      } catch (error) {
+        drawer.innerHTML = `<button class="close" type="button">关闭</button><p class="empty">${error.message}</p>`;
+        drawer.querySelector('.close')?.addEventListener('click', closeDrawer);
+      }
+    }
+
+    function closeDrawer() {
+      const drawer = document.querySelector('#drawer');
+      drawer.classList.remove('open');
+      drawer.setAttribute('aria-hidden', 'true');
+    }
+
+    function drawHeatmap() {
+      const all = state.history || [];
+      const rows = all.slice(-state.historyRange);
+      document.querySelector('#heatmap').innerHTML = heatmap(rows, state.data?.transitions);
+      document.querySelector('#heatmap-title').textContent =
+        `状态热力图（最近 ${rows.length} 个交易日）`;
+      document.querySelectorAll('#heatmap-range button').forEach(button => {
+        button.setAttribute('aria-pressed', String(Number(button.dataset.range) === state.historyRange));
+      });
+
+      const grid = document.querySelector('#heatmap .heatmap');
+      if (!grid) return;
+      const labels = {
+        0: ['① 流动性', 'liquidity_state'],
+        1: ['② 量能', 'volume_state'],
+        2: ['③ 宽基 ETF', 'etf_state'],
+        3: ['综合结论', 'overall_state'],
+      };
+      const notes = { 0: 'liquidity_note', 1: 'volume_note', 2: 'etf_note' };
+      grid.addEventListener('mouseover', event => {
+        const cell = event.target.closest('.hm-cell');
+        if (!cell) return;
+        const row = rows[Number(cell.dataset.index)];
+        if (!row) return;
+        const [label, key] = labels[Number(cell.dataset.row)];
+        const note = notes[Number(cell.dataset.row)];
+        const detail = note ? ` · ${row[note] || '—'}` : '';
+        document.querySelector('#heatmap-readout').innerHTML =
+          `<b>${row.trade_date}</b> ${label}：<b>${row[key] || 'UNKNOWN'}</b>${detail}`;
+      });
+      grid.addEventListener('mouseleave', () => {
+        document.querySelector('#heatmap-readout').textContent = '悬停任意格子查看当日的三层判定与理由';
+      });
+    }
+
+    function wireHeatmap() {
+      document.querySelectorAll('#heatmap-range button').forEach(button => {
+        button.addEventListener('click', () => {
+          state.historyRange = Number(button.dataset.range);
+          drawHeatmap();
+        });
+      });
+      drawHeatmap();
+    }
+
+    function wireTurnoverChart() {
+      const series = state.data?.turnover_series || [];
+      const draw = () => {
+        const slice = series.slice(-state.range);
+        document.querySelector('#turnover-chart').innerHTML = barChart(slice);
+        document.querySelector('#turnover-title').textContent = `每日成交额（最近 ${slice.length} 个交易日）`;
+        document.querySelectorAll('#range-switch button').forEach(button => {
+          button.setAttribute('aria-pressed', String(Number(button.dataset.range) === state.range));
+        });
+      };
+      document.querySelectorAll('#range-switch button').forEach(button => {
+        button.addEventListener('click', () => { state.range = Number(button.dataset.range); draw(); });
+      });
+      draw();
+
+      const chart = document.querySelector('#turnover-chart');
+      chart.addEventListener('mouseover', event => {
+        const bar = event.target.closest('.bar');
+        if (!bar) return;
+        const slice = series.slice(-state.range);
+        const item = slice[Number(bar.dataset.index)];
+        if (!item) return;
+        document.querySelector('#turnover-readout').innerHTML =
+          `<b>${item.trade_date}</b> 成交额 <b>${fmtMoney(item.turnover_amount_total)}</b>` +
+          ` · 20 日均额 ${fmtMoney(item.turnover_amount_20d_avg)}` +
+          ` · 沪市换手率 ${fmtRate(item.turnover_rate_pct)}`;
+      });
+      chart.addEventListener('mouseleave', () => {
+        document.querySelector('#turnover-readout').textContent = '悬停柱状图查看当日明细';
+      });
+    }
+
+    function wireQuadrant() {
+      const points = state.data?.quadrant_points || [];
+      const chart = document.querySelector('#quadrant-chart');
+      chart.addEventListener('mouseover', event => {
+        const dot = event.target.closest('.qdot');
+        if (!dot) return;
+        const point = points[Number(dot.dataset.index)];
+        if (!point) return;
+        const label = point.trade_date === points[points.length - 1].trade_date ? '当前' : '';
+        document.querySelector('#quadrant-readout').innerHTML =
+          `<b>${point.trade_date}</b>${label ? `（${label}）` : ''} 位置分位 ${fmtRatio(point.position_pct_250d)}` +
+          ` · 量比 ${fmtNum(point.volume_ratio_5d)} · ${point.quadrant_label || ''}`;
+      });
+      chart.addEventListener('mouseleave', () => {
+        document.querySelector('#quadrant-readout').textContent = state.data?.meta?.quadrant_label || '';
+      });
+    }
+
+    function wireBasket() {
+      const rows = state.data?.basket || [];
+      const indices = [...new Set(rows.map(row => row.index_name || row.index_id))].sort();
+      document.querySelector('#basket-filters').innerHTML = [
+        `<span class="cap">按跟踪指数筛选：</span>`,
+        `<button data-index="ALL" aria-pressed="true">全部 ${rows.length}</button>`,
+        ...indices.map(name => {
+          const count = rows.filter(row => (row.index_name || row.index_id) === name).length;
+          return `<button data-index="${name}" aria-pressed="false">${name} ${count}</button>`;
+        }),
+      ].join('');
+      document.querySelectorAll('#basket-filters button').forEach(button => {
+        button.addEventListener('click', () => {
+          state.indexFilter = button.dataset.index;
+          document.querySelectorAll('#basket-filters button').forEach(other => {
+            other.setAttribute('aria-pressed', String(other.dataset.index === state.indexFilter));
+          });
+          drawBasketTable();
+        });
+      });
+      drawBasketTable();
+    }
+
+    function wireBasketFlow() {
+      const series = state.data?.basket_flow?.series || [];
+      const chart = document.querySelector('#basket-flow-chart');
+      if (!chart || !series.length) return;
+      chart.addEventListener('mouseover', event => {
+        const line = event.target.closest('.flow-line');
+        if (!line) return;
+        const item = series[Number(line.dataset.index)];
+        const last = item.points[item.points.length - 1];
+        document.querySelector('#basket-flow-readout').innerHTML =
+          `<b>${item.index_name}</b>（${item.contributor_count}/${item.member_count} 只有数据）` +
+          ` 窗口累积 <b>${fmtMoney(item.cumulative_net_subscription)}</b>` +
+          ` · 末日 ${last.trade_date} 当日 ${fmtMoney(last.daily_net_subscription)}`;
+      });
+      chart.addEventListener('mouseleave', () => {
+        document.querySelector('#basket-flow-readout').textContent = '悬停曲线查看当日的累积净申购';
+      });
+    }
+
+    function drawBasketTable() {
+      const rows = (state.data?.basket || []).filter(row =>
+        state.indexFilter === 'ALL' || (row.index_name || row.index_id) === state.indexFilter);
+      const { key, dir } = state.sort;
+      const sorted = [...rows].sort((a, b) => {
+        const left = a[key], right = b[key];
+        // NULL 永远排在最后：缺失值不参与大小比较
+        if (left == null && right == null) return 0;
+        if (left == null) return 1;
+        if (right == null) return -1;
+        const diff = typeof left === 'string' ? left.localeCompare(right) : Number(left) - Number(right);
+        return dir === 'asc' ? diff : -diff;
+      });
+      const columns = [
+        ['security_id', '代码'], ['short_name', '名称'], ['index_name', '跟踪指数'],
+        ['estimated_aum', '规模'], ['net_subscription_5d', '5 日估算净申购'],
+        ['net_subscription_20d', '20 日估算净申购'], ['premium_pct', '折溢价'],
+        ['turnover_amount', '成交额'], ['change_pct', '涨跌幅'],
+      ];
+      const head = columns.map(([column, label]) =>
+        `<th data-sort="${column}"${key === column ? ` aria-sort="${dir === 'asc' ? 'ascending' : 'descending'}"` : ''}>${label}</th>`
+      ).join('');
+      const money = column => row => fmtMoney(row[column]);
+      const cells = {
+        security_id: row => `<code>${row.security_id}</code>`,
+        short_name: row => row.short_name || '—',
+        index_name: row => row.index_name || row.index_id || '—',
+        estimated_aum: money('estimated_aum'),
+        net_subscription_5d: money('net_subscription_5d'),
+        net_subscription_20d: money('net_subscription_20d'),
+        // 折溢价是比例（0.0015 = +0.15%）；涨跌幅本身就是百分数（-1.69 = -1.69%）。
+        // 两者单位不同，不能共用同一个格式化函数。
+        premium_pct: row => fmtSignedRatio(row.premium_pct),
+        turnover_amount: money('turnover_amount'),
+        change_pct: row => fmtSignedPct(row.change_pct),
+      };
+      const body = sorted.map(row => `<tr data-id="${row.security_id}">` +
+        columns.map(([column]) => {
+          const value = cells[column](row);
+          const colorColumns = ['net_subscription_5d', 'net_subscription_20d', 'premium_pct', 'change_pct'];
+          const cellClass = colorColumns.includes(column) && row[column] != null
+            ? ` class="${cls(row[column])}"` : '';
+          return `<td${cellClass}>${value}</td>`;
+        }).join('') + '</tr>').join('');
+
+      document.querySelector('#basket-table').innerHTML = sorted.length
+        ? `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
+        : '<p class="empty">当前筛选下没有篮子成员。</p>';
+      document.querySelectorAll('#basket-table th[data-sort]').forEach(th => {
+        th.addEventListener('click', () => {
+          const column = th.dataset.sort;
+          state.sort = { key: column, dir: state.sort.key === column && state.sort.dir === 'desc' ? 'asc' : 'desc' };
+          drawBasketTable();
+        });
+      });
+      document.querySelectorAll('#basket-table tbody tr').forEach(tr => {
+        tr.addEventListener('click', () => openDrawer(tr.dataset.id));
+      });
+    }
+
+    (async () => {
+      try {
+        const [{ data }, history] = await Promise.all([
+          request('/api/v1/watchboard'),
+          request('/api/v1/watchboard/history?limit=250').catch(() => ({ data: [] })),
+        ]);
+        state.data = data;
+        state.history = Array.isArray(history.data) ? history.data : [];
+        renderFreshness(data.freshness);
+        render(data);
+      } catch (error) {
+        document.querySelector('#app').innerHTML = `<p class="empty">无法读取本地数据库：${error.message}</p>`;
+      }
+    })();
+  </script></body>
+</html>

@@ -22,6 +22,7 @@ from etf_engine.repositories.tag_repository import TagRepository
 from etf_engine.services.core_metrics_service import ETFCoreMetricsService
 from etf_engine.services.etf_service import ETFService
 from etf_engine.services.research_service import ResearchService
+from etf_engine.services.watchboard_service import WatchboardService
 
 
 def _canonical(security_id: str) -> str:
@@ -114,6 +115,20 @@ def get_core_metrics(security_id: str, asof_date: date | None = None) -> dict:
     return metrics.model_dump(mode="json")
 
 
+def get_market_pulse(asof_date: date | None = None) -> dict:
+    """三层看盘状态（流动性 / 量能 / 宽基 ETF）。
+
+    返回的是**确定性规则引擎**（``pulse_v2``）的状态标签，不是观点，
+    也不构成投资建议；每层附带覆盖度与缺口说明（见 docs/WATCHBOARD.md）。
+    """
+    payload = WatchboardService().watchboard(asof_date=asof_date)
+    # 序列化给 Agent 时不带整段成交额/两融序列（那是界面画图用的），
+    # 只给判定所需的事实与口径说明。
+    payload.pop("turnover_series", None)
+    payload.pop("margin_series", None)
+    return payload
+
+
 TOOL_FUNCTIONS: dict[str, Callable[..., Any]] = {
     "search_etfs": search_etfs,
     "get_etf_profile": get_etf_profile,
@@ -123,4 +138,5 @@ TOOL_FUNCTIONS: dict[str, Callable[..., Any]] = {
     "get_etf_holdings": get_etf_holdings,
     "compare_etfs": compare_etfs,
     "screen_etfs": screen_etfs,
+    "get_market_pulse": get_market_pulse,
 }

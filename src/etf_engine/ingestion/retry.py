@@ -1,4 +1,5 @@
 import socket
+import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
@@ -45,6 +46,11 @@ def socket_timeout(seconds: float = 20.0) -> Iterator[None]:
     AKShare 的不少包装函数内部是裸 ``requests.get``，不带 ``timeout``：
     上游卡住时，整个同步链路会无限期挂起（实测出现过 13 分钟不返回）。
     这里设置 socket 默认超时，退出时恢复原值。
+
+    注意：``socket.setdefaulttimeout`` 只约束**新建**的 socket。``requests``
+    的连接池会把在超时上下文之外建立的连接复用进来，这类连接上的阻塞读
+    永远不会超时（实测：看盘台回补卡住 20 分钟，lsof 显示一条 ESTABLISHED
+    的 https 连接）。需要硬保证的调用请用 :func:`call_with_deadline`。
     """
     previous = socket.getdefaulttimeout()
     socket.setdefaulttimeout(seconds)
@@ -52,3 +58,31 @@ def socket_timeout(seconds: float = 20.0) -> Iterator[None]:
         yield
     finally:
         socket.setdefaulttimeout(previous)
+
+
+def call_with_deadline[T](call: Callable[[], T], *, timeout: float) -> T:
+    """在守护线程里执行调用，超时即放弃并抛 ``TimeoutError``。
+
+    这是"上游不返回"的唯一可靠兜底：连接池复用的连接不理会 socket 默认超时，
+    只有把调用丢到单独线程、由主线程 ``join(timeout)`` 才能保证到点返回。
+
+    超时后那个线程会被放弃（daemon，不阻塞进程退出）。因此调用方应当
+    **限制重试次数**，避免悬挂线程堆积；单点失败按既有约定记入
+    ``ops.quality_issue`` 后继续处理下一条数据。
+    """
+    outcome: dict = {}
+
+    def _target() -> None:
+        try:
+            outcome["value"] = call()
+        except BaseException as exc:  # noqa: BLE001 - 原样回传给调用方
+            outcome["error"] = exc
+
+    thread = threading.Thread(target=_target, daemon=True)
+    thread.start()
+    thread.join(timeout)
+    if thread.is_alive():
+        raise TimeoutError(f"上游调用超过 {timeout}s 未返回")
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["value"]

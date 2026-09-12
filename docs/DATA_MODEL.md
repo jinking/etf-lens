@@ -282,6 +282,136 @@ calculated_at
 交易日**（上游缺披露的日期不会插值），因此窗口在存在缺口时可能跨越更长自然日。
 估算申购资金需要份额与净值按同一天对齐；净值历史不足时返回 NULL，不降级近似。
 
+写入方式（两个入口，口径相同、可叠加）：
+
+```text
+etf compute-mart       # 日常：每只 ETF 只写"最新一个有观测的交易日"一行
+etf backfill-flow      # 回填：按份额历史逐日回放，补齐历史缺口（仅每周跑）
+```
+
+回填行与日常行使用同一 `calculation_version=flow_v1`，按
+`(security_id, trade_date, calculation_version)` 幂等 upsert；非交易日不入库
+（回填时记 `ops.quality_issue`）。**回放行是"用今天存下的事实重算"**，
+不是当时的快照。
+
+## 看盘台市场层（`docs/WATCHBOARD.md`）
+
+口径声明：这一组表的成交额与市值是**沪深两市股票**口径，不含北交所、不含基金与债券；
+库内金额一律为**元**（上交所概况页的"亿元"由适配器换算，原始值进 `raw`）。
+
+### core.market_turnover_daily
+
+```text
+trade_date + exchange PK
+turnover_amount        # 成交额（元）
+turnover_rate_pct      # 交易所口径换手率；深交所不披露 → NULL
+float_market_cap
+total_market_cap
+listing_count
+source / upstream_source / fetched_at / quality_status / ingestion_run_id
+```
+
+沪深分列存储（两个交易所两个来源），合计在 mart 里派生，不在适配器里合并。
+
+### core.margin_balance_daily
+
+```text
+trade_date + exchange PK     # SSE / SZSE
+financing_balance
+financing_buy_amount
+securities_lending_balance
+margin_balance
+source / upstream_source / fetched_at / quality_status / ingestion_run_id
+```
+
+### core.market_valuation_daily
+
+```text
+index_id + trade_date PK     # 全 A 口径为 CN_A_ALL
+index_close
+pe_ttm_median / pe_ttm_mean / pe_lyr_median / pe_lyr_mean
+quantile_ttm_median_all_history / quantile_ttm_median_10y
+quantile_lyr_median_all_history / quantile_lyr_median_10y
+metric_basis                 # 上游口径标识，禁止跨来源混用分位
+source / upstream_source / fetched_at / quality_status / ingestion_run_id
+```
+
+分位由上游直接给出，属于事实；本系统不做二次推导。
+
+### core.market_activity_daily
+
+```text
+trade_date PK
+rising_count / falling_count / flat_count / suspended_count
+limit_up_count / limit_down_count / real_limit_up_count / real_limit_down_count
+activity_pct
+statistic_at                 # 上游统计时点；拿不到就不入库
+source / upstream_source / fetched_at / quality_status / ingestion_run_id
+```
+
+### core.fund_issuance
+
+新发基金事实（一行一只基金，主键 `fund_code`）：
+
+```text
+fund_code PK
+fund_name / company / fund_type / subscription_period / manager
+raised_shares       # 募集份额，单位「亿元」；上游未披露 → NULL
+established_date    # 成立日期：月度规模按它聚合，不按募集起始日
+source / upstream_source / fetched_at / quality_status / ingestion_run_id
+```
+
+约定：募集份额先空后补很常见，upsert 时不用 NULL 覆盖已有值；
+月度聚合在查询侧做（`fund_issuance_monthly`），同时返回"未披露募集份额的支数"，
+不吃掉口径缺口。最近 1~2 个月会因尚未录入而偏低，展示时必须标注为不完整月。
+
+### mart.index_position_daily
+
+```text
+index_id + trade_date PK
+close
+position_pct_250d            # 收盘价在窗口内的分位（0~1）
+position_pct_3y
+drawdown_from_250d_peak      # 距窗口最高收盘价的回撤（负数）
+calculation_version          # pulse_v2
+calculated_at
+```
+
+### mart.market_pulse_daily
+
+三层状态的每日快照，规则见 `docs/WATCHBOARD.md` 第 2 节，版本号 `pulse_v2`：
+
+```text
+trade_date PK
+
+第一层：margin_balance_total / _5d_change_pct / _position_pct_250d
+        liquidity_state / liquidity_score / liquidity_note
+第二层：turnover_amount_total / _5d_avg / _20d_avg / _volume_ratio_5d
+        turnover_amount_position_pct_250d / turnover_rate_pct
+        rising_count / falling_count / limit_up_count / limit_down_count
+        volume_state / volume_score / volume_note
+第三层：broad_etf_basket_size / broad_etf_net_subscription_5d / _20d
+        broad_etf_premium_median_pct / broad_index_id
+        broad_index_position_pct_250d
+        etf_state / etf_score / etf_note
+综合：  overall_state / overall_strong_layers / overall_known_layers / quadrant_label
+
+pulse_v2 追加的原始信号列（与确认状态成对存在）：
+
+```text
+liquidity_raw_state / volume_raw_state / etf_raw_state
+```
+
+`*_state` 是**确认状态**（信号连续 CONFIRM_DAYS=2 天才切换），
+`*_raw_state` 是**当日原始信号**。两者不一致时，说明"边际变化已经出现、
+但还没被确认"——这是界面上单独标记的那一类日子。
+        calculation_version / calculated_at
+```
+
+约定：状态取值 `STRONG / NEUTRAL / WEAK / UNKNOWN`，综合结论为
+`偏多 / 中性观望 / 防守 / 数据不足`；已知层不足两层时不给结论。
+这是**确定性规则引擎**的输出，不是观点，原始事实仍全部留在 `core.*`。
+
 ## ops.ingestion_run
 
 ```text

@@ -34,7 +34,7 @@
     </style>
   </head>
   <body><main>
-    <header><div class="brand">ETF Lens <em>LOCAL RESEARCH TERMINAL</em></div><div class="status"><i class="dot" id="status-dot"></i><span id="status-text">读取本地数据状态</span></div></header>
+    <header><div class="brand">ETF Lens <em>LOCAL RESEARCH TERMINAL</em></div><div class="status"><i class="dot" id="status-dot"></i><span id="status-text">读取本地数据状态</span><a href="/watchboard" style="margin-left:14px">看盘台 →</a></div></header>
     <section class="hero"><div><h1>把 ETF 研究<br>落在真实数据上。</h1><p>面向 A 股 ETF 的本地研究台。所有展示行情均来自你的 DuckDB 数据库；数据为空时，页面会如实提示，而不会用示例行情代替事实。</p></div><aside class="sync-card"><h2>首次使用</h2><p>同步会从 AKShare 拉取全市场 ETF 最新行情，写入本机数据库。这个过程通常需要几十秒。</p><button id="sync-button">同步最新行情 →</button><div id="sync-message" class="caption" style="margin-top:14px;color:#c3d2c6"></div></aside></section>
     <section class="stats"><div class="stat"><span>当日有行情 ETF</span><strong id="etf-count">—</strong></div><div class="stat"><span>最近交易日</span><strong id="asof-date">—</strong></div><div class="stat"><span>当日成交额</span><strong id="turnover">—</strong></div><div class="stat"><span>数据滞后 ETF</span><strong id="stale-count">—</strong></div></section>
     <section class="workspace"><section class="panel"><div class="panel-head"><h2>查找 ETF</h2><span class="caption">代码 / 名称</span></div><form id="search-form"><input id="search-input" placeholder="例如：588200、芯片、黄金" autocomplete="off"><button>搜索</button></form><div id="results"><p class="empty">正在读取本地行情…</p></div></section><aside class="panel"><div class="panel-head"><h2>核心研究指标</h2><span class="caption">FACT + DERIVED</span></div><div class="detail" id="detail"><p class="empty">搜索或点击左侧的 ETF，即可查看本地事实与核心研究指标。<br><br>缺失指标会明确显示为 —，并附上可追溯原因。</p></div></aside></section>

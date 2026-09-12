@@ -44,6 +44,20 @@ IndexConstituentSource
 TradingCalendarSource
 ```
 
+看盘台（`docs/WATCHBOARD.md`）新增的市场层能力同样按能力拆，不按网站堆类：
+
+```text
+MarketTurnoverSource   # 交易所每日概况：SSE / SZSE 各一个适配器
+MarginBalanceSource    # 两融余额（沪深分列）
+MarketValuationSource  # 全 A 估值与历史分位
+MarketActivitySource   # 涨跌家数 / 涨跌停 / 活跃度
+FundIssuanceSource     # 新发基金（成立日期 + 募集份额，场外增量资金代理）
+```
+
+这些接口在 `sources/registry.py` 的 `SourceRegistry` 里注册为
+`market_turnover_sources` / `margin_source` / `valuation_source` /
+`market_activity_source`。
+
 业务层不得直接依赖 AKShare 函数。
 
 业务层（`jobs/`）只通过 `sources/registry.py` 的 `SourceRegistry` 获取适配器，
@@ -177,7 +191,20 @@ history
 shares
 nav
 metrics
+pulse
 ```
+
+已落地模板：
+
+```text
+scripts/run_daily.sh              # 每日：日历 → 行情 → 净值 → 份额 → 市场层 → mart → 看盘状态
+scripts/run_weekly.sh             # 每周：净值回补 / ETF→指数映射 / 指数长历史 / 成交额回补
+scripts/launchd/com.etf-lens.daily.plist   # macOS launchd 模板（改路径后 load）
+```
+
+约定：每日与每周链路都**尽力而为**（单步失败不阻断后续步骤，最后以非 0 退出码
+上报），因为份额、折溢价、成交额这类数据一天不跑就永久缺一天。所有写库任务
+必须**串行**——DuckDB 是单写进程，并发跑同类任务会互相抢文件锁。
 
 未就绪数据允许 PENDING + 有界重试。
 
