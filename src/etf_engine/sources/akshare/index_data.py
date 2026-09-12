@@ -13,6 +13,7 @@ from decimal import Decimal, InvalidOperation
 
 import akshare as ak
 import pandas as pd
+import requests
 
 from etf_engine.domain.enums import QualityStatus
 from etf_engine.domain.identifiers import SecurityId
@@ -22,8 +23,56 @@ from etf_engine.domain.models import (
     IndexQuote,
     SourceMeta,
 )
-from etf_engine.domain.quality import DataQualityIssue, error, warn
+from etf_engine.domain.quality import DataQualityIssue, warn
+from etf_engine.ingestion.retry import socket_timeout
 from etf_engine.sources.base import IndexConstituentSource
+
+#: 中证指数官网历史行情接口。
+CSINDEX_QUOTE_URL = "https://www.csindex.com.cn/csindex-home/perf/index-perf"
+
+_CSINDEX_COLUMNS = [
+    "日期",
+    "指数代码",
+    "指数中文全称",
+    "指数中文简称",
+    "指数英文全称",
+    "指数英文简称",
+    "开盘",
+    "最高",
+    "最低",
+    "收盘",
+    "涨跌",
+    "涨跌幅",
+    "成交量",
+    "成交金额",
+    "样本数量",
+    "滚动市盈率",
+]
+
+
+def fetch_csindex_quotes(index_id: str, start_date: date, end_date: date) -> pd.DataFrame:
+    """中证指数官网历史行情。
+
+    直接请求并带 ``timeout``：AKShare 的包装函数是裸 ``requests.get``，
+    上游卡住时会让整个任务无限期挂起。
+    """
+    response = requests.get(
+        CSINDEX_QUOTE_URL,
+        params={
+            "indexCode": index_id,
+            "startDate": start_date.strftime("%Y%m%d"),
+            "endDate": end_date.strftime("%Y%m%d"),
+        },
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=20.0,
+    )
+    response.raise_for_status()
+    payload = response.json().get("data") or []
+    frame = pd.DataFrame(payload)
+    if frame.empty or frame.shape[1] != len(_CSINDEX_COLUMNS):
+        raise RuntimeError(f"中证指数行情返回体形状异常: indexCode={index_id}")
+    frame.columns = _CSINDEX_COLUMNS
+    return frame
 
 
 def _decimal(value) -> Decimal | None:
@@ -154,6 +203,46 @@ def parse_index_quote_frame(
     return quotes
 
 
+def parse_csindex_quote_frame(
+    frame: pd.DataFrame,
+    *,
+    index_id: str,
+    fetched_at: datetime,
+) -> list[IndexQuote]:
+    """中证指数官网日线（``日期/开盘/最高/最低/收盘``）。"""
+    for column in ("日期", "开盘", "最高", "最低", "收盘"):
+        if column not in frame.columns:
+            raise RuntimeError(f"中证指数行情缺少 {column} 列")
+
+    quotes: list[IndexQuote] = []
+    for _, row in frame.iterrows():
+        close = _decimal(row.get("收盘"))
+        if close is None:
+            continue
+        try:
+            trade_date = pd.Timestamp(row["日期"]).date()
+        except (ValueError, TypeError):
+            continue
+        quotes.append(
+            IndexQuote(
+                index_id=index_id,
+                trade_date=trade_date,
+                open=_decimal(row.get("开盘")),
+                high=_decimal(row.get("最高")),
+                low=_decimal(row.get("最低")),
+                close=close,
+                currency="CNY",
+                source_meta=SourceMeta(
+                    source="csindex",
+                    upstream_source="csindex",
+                    fetched_at=fetched_at,
+                    quality_status=QualityStatus.PASS,
+                ),
+            )
+        )
+    return quotes
+
+
 class AkshareIndexCatalogSource:
     """指数目录：中证全量清单 + 新浪行情符号。"""
 
@@ -161,9 +250,11 @@ class AkshareIndexCatalogSource:
         fetched_at = datetime.now().astimezone()
         issues: list[DataQualityIssue] = []
 
-        catalog_rows = parse_csindex_catalog(ak.index_csindex_all())
+        with socket_timeout():
+            catalog_rows = parse_csindex_catalog(ak.index_csindex_all())
         try:
-            sina_frame = ak.stock_zh_index_spot_sina()
+            with socket_timeout():
+                sina_frame = ak.stock_zh_index_spot_sina()
             symbols = parse_sina_symbols(sina_frame)
         except Exception as exc:
             sina_frame = pd.DataFrame()
@@ -234,7 +325,8 @@ class AkshareIndexConstituentSource(IndexConstituentSource):
     ) -> tuple[list[IndexConstituent], list[DataQualityIssue]]:
         fetched_at = datetime.now().astimezone()
         try:
-            frame = ak.index_stock_cons_weight_csindex(symbol=index_id)
+            with socket_timeout():
+                frame = ak.index_stock_cons_weight_csindex(symbol=index_id)
         except Exception as exc:
             return [], [warn("constituent_source_unavailable", f"{index_id}: {exc}")]
         if frame is None or frame.empty:
@@ -243,33 +335,51 @@ class AkshareIndexConstituentSource(IndexConstituentSource):
 
 
 class AkshareIndexQuoteSource:
-    """新浪指数日线（仅有行情符号的指数）。"""
+    """指数日线行情，按来源能力依次尝试。
+
+    1. 新浪指数日线：覆盖交易所发布的主要指数（目录里带 ``market_symbol`` 的那些）；
+    2. 中证指数官网日线：覆盖中证自编主题指数（如 931160 中证全指通信设备），
+       这类指数在新浪没有行情符号，只靠新浪会留下大片空洞。
+
+    ``core.index_quote_daily.source`` 记录每行实际来自哪个来源，不混用口径。
+    """
 
     def fetch_quotes(
-        self, index_id: str, market_symbol: str, start_date: date, end_date: date
+        self, index_id: str, market_symbol: str | None, start_date: date, end_date: date
     ) -> tuple[list[IndexQuote], list[DataQualityIssue]]:
         fetched_at = datetime.now().astimezone()
+        issues: list[DataQualityIssue] = []
+
+        if market_symbol:
+            try:
+                with socket_timeout():
+                    frame = ak.stock_zh_index_daily(symbol=market_symbol)
+                quotes = parse_index_quote_frame(
+                    frame,
+                    index_id=index_id,
+                    fetched_at=fetched_at,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                if quotes:
+                    return quotes, issues
+                issues.append(warn("index_quote_empty", f"{index_id} ({market_symbol})"))
+            except Exception as exc:
+                issues.append(warn("index_quote_failed", f"{index_id} ({market_symbol}): {exc}"))
+
         try:
-            frame = ak.stock_zh_index_daily(symbol=market_symbol)
+            frame = fetch_csindex_quotes(index_id, start_date=start_date, end_date=end_date)
+            quotes = parse_csindex_quote_frame(frame, index_id=index_id, fetched_at=fetched_at)
+            if quotes:
+                return quotes, issues
+            issues.append(warn("index_quote_empty", f"{index_id} (csindex)"))
         except Exception as exc:
-            return [], [warn("index_quote_failed", f"{index_id} ({market_symbol}): {exc}")]
-        try:
-            quotes = parse_index_quote_frame(
-                frame,
-                index_id=index_id,
-                fetched_at=fetched_at,
-                start_date=start_date,
-                end_date=end_date,
+            issues.append(warn("index_quote_failed", f"{index_id} (csindex): {exc}"))
+
+        issues.append(
+            warn(
+                "index_quote_unavailable",
+                f"{index_id} 在新浪与中证指数官网都没有可用行情",
             )
-        except RuntimeError as exc:
-            return [], [warn("index_quote_unavailable", f"{index_id} ({market_symbol}): {exc}")]
-        if not quotes:
-            return [], [warn("index_quote_empty", f"{index_id} ({market_symbol})")]
-        return quotes, []
-
-
-def missing_quote_source_issue(index_id: str) -> DataQualityIssue:
-    return error(
-        "index_quote_source_missing",
-        f"{index_id} 在目录里没有行情符号（新浪未收录该指数），指数行情留空",
-    )
+        )
+        return [], issues

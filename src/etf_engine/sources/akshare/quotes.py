@@ -8,6 +8,7 @@ from etf_engine.domain.enums import QualityStatus
 from etf_engine.domain.identifiers import SecurityId
 from etf_engine.domain.models import ETFQuote, SourceMeta
 from etf_engine.ingestion.normalizer import normalize_premium_discount
+from etf_engine.ingestion.retry import socket_timeout
 from etf_engine.sources.base import ETFQuoteSource
 
 
@@ -27,7 +28,8 @@ class AkshareETFQuoteSource(ETFQuoteSource):
     """
 
     def fetch_quotes(self, trade_date: date | None = None) -> list[ETFQuote]:
-        df = ak.fund_etf_spot_em()
+        with socket_timeout():
+            df = ak.fund_etf_spot_em()
         fetched_at = datetime.now().astimezone()
         result: list[ETFQuote] = []
         # 上游当前只提供 买一/卖一，没有 买一量/卖一量；缺失即 NULL，不猜。

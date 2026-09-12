@@ -128,6 +128,9 @@ quality_status
 `unit_nav` 来自东方财富场内基金净值接口（一次返回最近两个交易日）。
 `adjusted_nav` 保持 NULL：上游提供的"累计净值"与复权净值口径不同，不做事后映射。
 
+注意：`unit_nav` 是未复权值。跨过份额折算/拆分/分红的区间不得直接计算收益或
+跟踪误差，研究层会拒绝计算并在 `quality.reasons` 说明原因（见 TECHNICAL §6.1）。
+
 ## core.etf_holding_disclosure
 
 ```text
@@ -176,6 +179,9 @@ fetched_at
 
 目录 = 中证指数全量清单 ∪ 新浪指数列表：深证系列与上证自编指数不在中证清单里，
 但它们的行情是可得事实，因此并入目录。
+
+`market_symbol` 是新浪行情符号（可选）。没有该符号的指数（如中证自编主题指数）
+走中证指数官网日线，实际来源记录在 `core.index_quote_daily.source`。
 
 ## core.stock_industry
 

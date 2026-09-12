@@ -14,6 +14,7 @@ from etf_engine.domain.enums import QualityStatus
 from etf_engine.domain.identifiers import SecurityId
 from etf_engine.domain.models import SourceMeta, StockIndustry
 from etf_engine.domain.quality import DataQualityIssue, warn
+from etf_engine.ingestion.retry import socket_timeout
 
 #: 优先使用的分类标准，按顺序取第一个命中的。
 STANDARD_PREFERENCE = ("中证行业分类标准", "中国上市公司协会上市公司行业分类标准")
@@ -125,11 +126,12 @@ class AkshareStockIndustrySource:
                 )
                 continue
             try:
-                frame = ak.stock_industry_change_cninfo(
-                    symbol=sid.ticker,
-                    start_date="20000101",
-                    end_date=date.today().strftime("%Y%m%d"),
-                )
+                with socket_timeout():
+                    frame = ak.stock_industry_change_cninfo(
+                        symbol=sid.ticker,
+                        start_date="20000101",
+                        end_date=date.today().strftime("%Y%m%d"),
+                    )
             except Exception as exc:
                 issues.append(warn("industry_fetch_failed", f"{sid.value}: {exc}"))
                 continue

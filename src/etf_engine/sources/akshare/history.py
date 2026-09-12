@@ -7,6 +7,7 @@ import pandas as pd
 from etf_engine.domain.enums import Exchange, QualityStatus
 from etf_engine.domain.identifiers import SecurityId
 from etf_engine.domain.models import ETFQuote, SourceMeta
+from etf_engine.ingestion.retry import socket_timeout
 from etf_engine.sources.base import ETFHistorySource
 
 #: 新浪历史行情接口使用的小写市场前缀。
@@ -28,7 +29,8 @@ class AkshareETFHistorySource(ETFHistorySource):
         if prefix is None:
             raise ValueError(f"新浪历史行情接口不支持 {sid.exchange.value}")
         symbol = f"{prefix}{sid.ticker}"
-        df = ak.fund_etf_hist_sina(symbol=symbol)
+        with socket_timeout():
+            df = ak.fund_etf_hist_sina(symbol=symbol)
         fetched_at = datetime.now().astimezone()
         result: list[ETFQuote] = []
         if df is None or df.empty:
@@ -66,13 +68,14 @@ class AkshareETFHistorySource(ETFHistorySource):
     ) -> list[ETFQuote]:
         sid = SecurityId.parse(security_id)
         try:
-            df = ak.fund_etf_hist_em(
-                symbol=sid.ticker,
-                period="daily",
-                start_date=start_date.strftime("%Y%m%d"),
-                end_date=end_date.strftime("%Y%m%d"),
-                adjust="",
-            )
+            with socket_timeout():
+                df = ak.fund_etf_hist_em(
+                    symbol=sid.ticker,
+                    period="daily",
+                    start_date=start_date.strftime("%Y%m%d"),
+                    end_date=end_date.strftime("%Y%m%d"),
+                    adjust="",
+                )
             fetched_at = datetime.now().astimezone()
             result: list[ETFQuote] = []
 

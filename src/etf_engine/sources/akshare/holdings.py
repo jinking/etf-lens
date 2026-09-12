@@ -24,6 +24,7 @@ from etf_engine.domain.enums import QualityStatus
 from etf_engine.domain.identifiers import SecurityId
 from etf_engine.domain.models import ETFHolding, SourceMeta
 from etf_engine.domain.quality import DataQualityIssue, warn
+from etf_engine.ingestion.retry import socket_timeout
 from etf_engine.sources.base import ETFHoldingSource
 
 #: 单只 ETF 保留的披露持仓条数。
@@ -148,7 +149,8 @@ class AkshareETFHoldingSource(ETFHoldingSource):
     def _fetch_frame(self, ticker: str, reference: date) -> pd.DataFrame | None:
         for year in (reference.year, reference.year - 1, reference.year - 2):
             try:
-                frame = ak.fund_portfolio_hold_em(symbol=ticker, date=str(year))
+                with socket_timeout():
+                    frame = ak.fund_portfolio_hold_em(symbol=ticker, date=str(year))
             except Exception:
                 continue
             if frame is not None and not frame.empty:

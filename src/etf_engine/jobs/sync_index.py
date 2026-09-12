@@ -19,7 +19,6 @@ from etf_engine.ingestion.source_health import track_source_health
 from etf_engine.jobs.sync_calendar import ensure_market_calendar
 from etf_engine.repositories.index_repository import IndexRepository
 from etf_engine.repositories.quality_issue_repository import QualityIssueRepository
-from etf_engine.sources.akshare.index_data import missing_quote_source_issue
 from etf_engine.sources.registry import registry
 
 DEFAULT_SLEEP_SECONDS = 0.3
@@ -215,14 +214,11 @@ def sync_index_details(
         total_constituents += repository.upsert_constituents(constituents)
         issues.extend(constituent_issues)
 
-        if market_symbol is None:
-            issues.append(missing_quote_source_issue(index_id))
-            continue
         if index_id in existing_quotes:
             # 已经有窗口内的行情，不重复拉取。
             continue
 
-        with track_source_health("sina", "index_quote"):
+        with track_source_health("index_quote", "index_quote"):
             quotes, quote_issues = quote_source.fetch_quotes(
                 index_id, market_symbol, start_date=start_date, end_date=end_date
             )

@@ -187,3 +187,29 @@ class IndexRepository:
                 [start_date, end_date],
             ).fetchall()
         return {row[0] for row in rows}
+
+    def quote_history(self, index_ids: list[str], limit: int = 1500) -> dict[str, list[dict]]:
+        """``{index_id: [{trade_date, close}, ...]}``（按日期升序）。
+
+        位置分位需要长历史，因此这里不做日期过滤，只限制每只指数取最近
+        ``limit`` 个观测，避免把整库拉进内存。
+        """
+        if not index_ids:
+            return {}
+        sql = """
+        SELECT index_id, trade_date, close
+        FROM (
+            SELECT index_id, trade_date, close,
+                   ROW_NUMBER() OVER (PARTITION BY index_id ORDER BY trade_date DESC) AS rn
+            FROM core.index_quote_daily
+            WHERE index_id IN ({placeholders}) AND close IS NOT NULL
+        )
+        WHERE rn <= ?
+        ORDER BY index_id, trade_date
+        """.format(placeholders=",".join("?" for _ in index_ids))
+        with connect(settings.database_path) as con:
+            rows = con.execute(sql, [*index_ids, limit]).fetchall()
+        history: dict[str, list[dict]] = {index_id: [] for index_id in index_ids}
+        for index_id, trade_date, close in rows:
+            history[index_id].append({"trade_date": trade_date, "close": close})
+        return history

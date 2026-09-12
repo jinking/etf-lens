@@ -76,7 +76,26 @@ class _ConstituentSource:
 
 class _QuoteSource:
     def fetch_quotes(self, index_id, market_symbol, start_date, end_date):
-        from etf_engine.sources.akshare.index_data import parse_index_quote_frame
+        from etf_engine.sources.akshare.index_data import (
+            parse_csindex_quote_frame,
+            parse_index_quote_frame,
+        )
+
+        if not market_symbol:
+            # 新浪没有行情符号时退回中证指数官网（主题指数走的就是这条路）。
+            frame = QUOTE_FRAME.rename(
+                columns={
+                    "date": "日期",
+                    "open": "开盘",
+                    "high": "最高",
+                    "low": "最低",
+                    "close": "收盘",
+                }
+            )
+            return (
+                parse_csindex_quote_frame(frame, index_id=index_id, fetched_at=FETCHED_AT),
+                [],
+            )
 
         quotes = parse_index_quote_frame(
             QUOTE_FRAME,
@@ -140,7 +159,7 @@ def test_index_catalog_then_map_then_details(tmp_path, monkeypatch):
 
     assert details["index_count"] == 2
     assert details["constituents_written"] == 4
-    assert details["quotes_written"] == 2, "只有沪深300有行情符号"
+    assert details["quotes_written"] == 4, "沪深300走新浪，通信设备走中证官网"
 
     with connect(settings.database_path) as con:
         mapping = con.execute(
@@ -157,7 +176,7 @@ def test_index_catalog_then_map_then_details(tmp_path, monkeypatch):
         }
     assert mapping == [("510300.SH", "000300"), ("515880.SH", "931160")]
     assert master == ("000300",), "master 的跟踪指数同步回填"
-    assert "index_quote_source_missing" in issues, "没有行情符号的指数必须留痕"
+    assert "index_quote_unavailable" not in issues, "新浪 + 中证官网已能覆盖这两个指数"
 
     with connect(settings.database_path) as con:
         unmatched_name = con.execute(
@@ -213,4 +232,33 @@ def test_tracking_error_becomes_available_after_index_sync(tmp_path, monkeypatch
     sync_index_details()
 
     repo = IndexRepository()
-    assert repo.index_ids_with_quotes(date(2026, 1, 1), date(2026, 12, 31)) == {"000300"}
+    assert repo.index_ids_with_quotes(date(2026, 1, 1), date(2026, 12, 31)) == {
+        "000300",
+        "931160",
+    }
+
+
+def test_index_quote_reports_when_both_sources_fail(tmp_path, monkeypatch):
+    _prepare(tmp_path, monkeypatch)
+    sync_index_catalog()
+    sync_index_map(benchmark_lookup=lambda sid: BENCHMARKS[sid], sleep_seconds=0)
+
+    class _EmptyQuoteSource:
+        def fetch_quotes(self, index_id, market_symbol, start_date, end_date):
+            from etf_engine.domain.quality import warn
+
+            return [], [warn("index_quote_unavailable", f"{index_id} 无行情")]
+
+    monkeypatch.setattr(type(registry), "index_quote_source", _EmptyQuoteSource, raising=False)
+
+    details = sync_index_details()
+
+    assert details["quotes_written"] == 0
+    with connect(settings.database_path) as con:
+        issues = {
+            row[0]
+            for row in con.execute(
+                "SELECT rule_name FROM ops.quality_issue WHERE dataset = 'index_details'"
+            ).fetchall()
+        }
+    assert "index_quote_unavailable" in issues

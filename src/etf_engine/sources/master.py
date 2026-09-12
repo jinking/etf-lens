@@ -9,6 +9,7 @@ from etf_engine.domain.enums import QualityStatus
 from etf_engine.domain.identifiers import SecurityId
 from etf_engine.domain.models import ETFMaster, SourceMeta
 from etf_engine.domain.quality import DataQualityIssue, error
+from etf_engine.ingestion.retry import socket_timeout
 from etf_engine.sources.base import ETFMasterSource
 
 
@@ -78,7 +79,8 @@ class UnifiedETFMasterSource(ETFMasterSource):
 
         all_records: dict[str, ETFMaster] = {}
         try:
-            ths_df = ak.fund_etf_category_ths(symbol="ETF")
+            with socket_timeout():
+                ths_df = ak.fund_etf_category_ths(symbol="ETF")
             for _, row in ths_df.iterrows():
                 code_raw = str(row.get("基金代码", "")).strip().zfill(6)
                 if not code_raw or not code_raw.isdigit():

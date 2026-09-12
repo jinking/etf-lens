@@ -1,4 +1,6 @@
-from collections.abc import Callable
+import socket
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 
 from tenacity import (
     RetryError,
@@ -34,3 +36,19 @@ def with_retry[T](
         return retrying()
     except RetryError:  # pragma: no cover - reraise=True 时不会走到
         raise
+
+
+@contextmanager
+def socket_timeout(seconds: float = 20.0) -> Iterator[None]:
+    """给没有自带超时的第三方调用兜底。
+
+    AKShare 的不少包装函数内部是裸 ``requests.get``，不带 ``timeout``：
+    上游卡住时，整个同步链路会无限期挂起（实测出现过 13 分钟不返回）。
+    这里设置 socket 默认超时，退出时恢复原值。
+    """
+    previous = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(seconds)
+    try:
+        yield
+    finally:
+        socket.setdefaulttimeout(previous)

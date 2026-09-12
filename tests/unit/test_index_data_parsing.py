@@ -7,6 +7,7 @@ import pytest
 from etf_engine.sources.akshare.index_data import (
     parse_constituent_frame,
     parse_csindex_catalog,
+    parse_csindex_quote_frame,
     parse_index_quote_frame,
     parse_sina_symbols,
 )
@@ -77,4 +78,35 @@ def test_index_quotes_require_a_date_column():
     with pytest.raises(RuntimeError):
         parse_index_quote_frame(
             pd.DataFrame([{"close": 1.0}]), index_id="931151", fetched_at=FETCHED_AT
+        )
+
+
+def test_csindex_quotes_parse_thematic_index_rows():
+    """中证自编主题指数在新浪没有行情符号，走中证官网日线。"""
+    frame = pd.DataFrame(
+        [
+            {
+                "日期": "2026-09-11",
+                "指数代码": "931160",
+                "开盘": 20004.76,
+                "最高": 20518.27,
+                "最低": 19793.60,
+                "收盘": 20385.28,
+            }
+        ]
+    )
+
+    quotes = parse_csindex_quote_frame(frame, index_id="931160", fetched_at=FETCHED_AT)
+
+    assert quotes[0].index_id == "931160"
+    assert quotes[0].close == Decimal("20385.28")
+    assert quotes[0].source_meta.source == "csindex"
+
+
+def test_csindex_quote_frame_shape_is_validated():
+    with pytest.raises(RuntimeError):
+        parse_csindex_quote_frame(
+            pd.DataFrame([{"日期": "2026-09-11", "收盘": 1.0}]),
+            index_id="931160",
+            fetched_at=FETCHED_AT,
         )

@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from etf_engine.research.corporate_actions import has_unadjusted_jump
+
 
 def tracking_error(
     nav: pd.Series,
@@ -15,6 +17,9 @@ def tracking_error(
     nav_values = nav_values[nav_values > 0]
     index_values = index_values[index_values > 0]
     if nav_values.empty or index_values.empty:
+        return None
+    if has_unadjusted_jump(nav_values.tail(window + 1)):
+        # 单位净值未复权：跨过份额折算/分红的区间算不出有意义的跟踪误差。
         return None
 
     daily_gaps = pd.concat(

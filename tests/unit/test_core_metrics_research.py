@@ -78,8 +78,10 @@ def test_return_and_drawdown_use_requested_trading_day_windows():
 
     assert simple_return(prices, 20) == pytest.approx(1 / 7)
     assert simple_return(prices, 60) == pytest.approx(0.6)
-    assert max_drawdown(pd.Series([100, 120, 90, 100]), 4) == pytest.approx(-0.25)
-    assert max_drawdown(pd.Series([100, 120, 90, 100]), 60) is None
+    # 单日波动保持在 ETF 涨跌停范围内：更大的跳变按未复权除权处理（见
+    # tests/unit/test_corporate_actions.py）。
+    assert max_drawdown(pd.Series([100, 115, 93, 100]), 4) == pytest.approx(93 / 115 - 1)
+    assert max_drawdown(pd.Series([100, 115, 93, 100]), 60) is None
 
 
 def test_tracking_error_uses_aligned_nav_and_index_returns():

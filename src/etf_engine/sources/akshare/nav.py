@@ -9,6 +9,7 @@ from etf_engine.domain.enums import QualityStatus
 from etf_engine.domain.identifiers import SecurityId
 from etf_engine.domain.models import ETFNav, SourceMeta
 from etf_engine.domain.quality import DataQualityIssue, warn
+from etf_engine.ingestion.retry import socket_timeout
 from etf_engine.sources.base import ETFNavHistorySource, ETFNavSource
 
 #: 东方财富净值接口用列名携带日期，形如 ``2026-09-11-单位净值``。
@@ -99,7 +100,8 @@ class AkshareETFNavSource(ETFNavSource):
         self, trade_date: date | None = None
     ) -> tuple[list[ETFNav], list[DataQualityIssue]]:
         fetched_at = datetime.now().astimezone()
-        frame = ak.fund_etf_fund_daily_em()
+        with socket_timeout():
+            frame = ak.fund_etf_fund_daily_em()
         return parse_nav_frame(frame, fetched_at=fetched_at, trade_date=trade_date)
 
 
@@ -170,11 +172,12 @@ class AkshareETFNavHistorySource(ETFNavHistorySource):
     ) -> tuple[list[ETFNav], list[DataQualityIssue]]:
         sid = SecurityId.parse(security_id)
         fetched_at = datetime.now().astimezone()
-        frame = ak.fund_etf_fund_info_em(
-            fund=sid.ticker,
-            start_date=start_date.strftime("%Y%m%d"),
-            end_date=end_date.strftime("%Y%m%d"),
-        )
+        with socket_timeout():
+            frame = ak.fund_etf_fund_info_em(
+                fund=sid.ticker,
+                start_date=start_date.strftime("%Y%m%d"),
+                end_date=end_date.strftime("%Y%m%d"),
+            )
         if frame is None or frame.empty:
             return [], []
         return parse_nav_history_frame(frame, security_id=sid.value, fetched_at=fetched_at)

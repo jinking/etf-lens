@@ -11,9 +11,11 @@ def test_simple_return():
 
 
 def test_drawdown():
-    s = pd.Series([100, 120, 90, 100])
-    assert round(max_drawdown(s), 6) == -0.25
-    assert round(current_drawdown(s), 6) == round(100 / 120 - 1, 6)
+    # 用 A 股 ETF 可能出现的单日波动（≤20%）：更大的单日跳变会被研究层
+    # 判定为未复权的除权/折算，不再参与收益与回撤计算。
+    s = pd.Series([100, 115, 93, 100])
+    assert round(max_drawdown(s), 6) == round(93 / 115 - 1, 6)
+    assert round(current_drawdown(s), 6) == round(100 / 115 - 1, 6)
 
 
 def test_flow():

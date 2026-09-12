@@ -6,6 +6,7 @@ from etf_engine.domain.core_metrics import CoreMetricsQuality, ETFCoreMetrics, T
 from etf_engine.domain.identifiers import SecurityId
 from etf_engine.ingestion.normalizer import normalize_premium_discount
 from etf_engine.repositories.core_metrics_repository import CoreMetricsRepository
+from etf_engine.research.corporate_actions import has_unadjusted_jump
 from etf_engine.research.exposure import calculate_top10_concentration
 from etf_engine.research.flow import calculate_flow, share_change_pct
 from etf_engine.research.liquidity import average_turnover_amount
@@ -59,13 +60,20 @@ class ETFCoreMetricsService:
         market_return_20d = simple_return(quote_frame["close"], 20)
         market_return_60d = simple_return(quote_frame["close"], 60)
         max_drawdown_60d = max_drawdown(quote_frame["close"], 60)
+        # 未复权价格序列跨过除权/折算日时，收益与回撤指标不可用：
+        # 必须给出真实原因，而不是笼统的"历史不足"。
+        price_has_corporate_action = has_unadjusted_jump(quote_frame["close"])
         for metric_name, value in (
             ("market_return_20d", market_return_20d),
             ("market_return_60d", market_return_60d),
             ("max_drawdown_60d", max_drawdown_60d),
         ):
             if value is None:
-                reasons[metric_name] = "insufficient_history"
+                reasons[metric_name] = (
+                    "corporate_action_in_window"
+                    if price_has_corporate_action
+                    else "insufficient_history"
+                )
 
         master = self.repository.master(canonical_id)
         tracking_index_row = self.repository.tracking_index(canonical_id, effective_asof)
@@ -137,9 +145,16 @@ class ETFCoreMetricsService:
                     [row["close"] for row in index_rows],
                     index=[row["trade_date"] for row in index_rows],
                 )
+                nav_has_corporate_action = has_unadjusted_jump(nav_values)
                 tracking_error_60d = tracking_error(nav_values, index_values, window=60)
+            else:
+                nav_has_corporate_action = False
             if tracking_error_60d is None:
-                reasons["tracking_error_60d"] = "insufficient_aligned_history"
+                reasons["tracking_error_60d"] = (
+                    "nav_not_adjusted_for_corporate_actions"
+                    if nav_has_corporate_action
+                    else "insufficient_aligned_history"
+                )
 
         reported_aum = master.get("reported_aum") if master else None
         reported_aum_date = master.get("reported_aum_date") if master else None

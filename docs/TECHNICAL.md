@@ -109,6 +109,22 @@ quality_status = CONFLICT
 已落地的相关约束：`core.etf_quote_daily` 的 upsert 按列合并——历史回补来源
 （新浪）不提供 `iopv` / 买卖盘 / 资金流，不能用 NULL 覆盖快照已写入的值。
 
+### 6.1 未复权序列的处理
+
+`core.etf_quote_daily.close` 与 `core.etf_nav_daily.unit_nav` 都是**未复权**事实。
+份额折算/拆分/分红会让序列出现机械跳变（实测 515880.SH 在 2026-07-03 做了 2:1
+份额折算，单位净值当日 -50%，而同期指数仅 -5%）。
+
+因此研究层（`research/corporate_actions.py`）会检测窗口内的异常跳变
+（默认阈值 20%，A 股 ETF 有涨跌停，真实行情不会超过），命中时：
+
+- `simple_return` / `annualized_volatility` / `max_drawdown` / `current_drawdown` /
+  `tracking_error` 一律返回 NULL，绝不给出跨除权的错误数值；
+- 接口的 `quality.reasons` 给出真实原因
+  （`corporate_action_in_window` / `nav_not_adjusted_for_corporate_actions`）。
+
+复权净值（或前复权收盘价）应作为独立字段另行采集，而不是就地覆盖原始事实。
+
 ## 7. Research Engine
 
 只处理标准化 Core Facts。
@@ -220,6 +236,23 @@ etf sync-shares --backfill-days 40             # 逐交易日回补上交所份�
 
 共同约定：单点失败只影响该标的（记入 `ops.quality_issue` 与 `ops.source_health`），
 接口抖动由 `ingestion/retry.py` 做指数退避；失败不会写出半成品数据。
+
+另外：AKShare 的多个包装函数内部是裸 `requests.get`，不带 `timeout`，上游卡住会让
+任务无限期挂起（实测出现过 13 分钟不返回）。适配器统一用
+`ingestion/retry.py: socket_timeout()` 兜底；能直接请求的接口（上交所份额、
+深交所列表、中证指数行情、基金概况页）改成自带 `timeout` 的直接请求。
+
+## 14. 指数行情来源
+
+指数行情按来源能力依次尝试，`core.index_quote_daily.source` 记录每行实际来源：
+
+```text
+新浪指数日线（sh000300 这类行情符号）
+  ↓ 没有符号或返回空
+中证指数官网日线（中证自编主题指数，如 931160 中证全指通信设备）
+```
+
+两者都取不到时记 `index_quote_unavailable`，不留空值冒充数据。
 
 ## 12. 测试
 

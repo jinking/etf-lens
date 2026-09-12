@@ -99,9 +99,9 @@ estimated_net_subscription
 1. **深交所份额历史**：上游只有当前快照（`SHOWTYPE=xlsx` 的基金列表接口不接受日期
    参数，实测传 `txtQueryDate`/`STAT_DATE` 都一样返回当日快照），无法回补，
    只能从现在开始逐日积累。
-2. **指数行情覆盖**：新浪只收录 562 条指数，中证自编主题指数（如 931160）没有行情符号；
-   东方财富的指数行情接口在本机网络被拒（`RemoteDisconnected`），因此这些指数
-   `core.index_quote_daily` 为空，跟踪误差不可用，已记 `index_quote_source_missing`。
+2. **复权净值**：`unit_nav` / `close` 都是未复权值，跨份额折算的收益、波动率、
+   回撤、跟踪误差目前一律返回 NULL（不返回错误值）。要覆盖这些标的，需要采集
+   复权净值或前复权收盘价作为独立字段。
 3. **上证自编指数缺目录**：`上证科创板芯片指数` 等既不在中证清单也不在新浪列表，
    目录无法给出代码 → 不写 `etf_index_map`，只保留披露的指数名称。
 4. **债/商品/海外指数**：中债系列、黄金 AU99.99、恒生/纳斯达克等不在 A 股指数口径内，
@@ -109,5 +109,6 @@ estimated_net_subscription
 5. **上市日期**：`listed_date` 仍只有深交所官方列表提供，沪市 ETF 为 NULL；
    管理人/费率/成立日期已由 `etf sync-fund-profile` 补齐。
 6. **持仓披露日**：`core.etf_holding_disclosure.disclosure_date` 上游不提供，保持 NULL。
-7. **`tracking_error_60d` 覆盖**：需"指数行情 + 净值"同时具备 40 个对齐交易日。
-   510300 等已可产出（实测 0.53%）；扩大覆盖要继续跑 `etf backfill-nav`。
+7. **`tracking_error_60d` 覆盖**：需"指数行情 + 净值"同时具备 40 个对齐交易日，
+   且窗口内没有未复权的公司行为。510300 等已可产出（实测 0.53%）；
+   扩大覆盖要继续跑 `etf backfill-nav`。
