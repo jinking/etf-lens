@@ -41,9 +41,16 @@ ETFShareSource
 ETFNavSource
 ETFHoldingSource
 IndexConstituentSource
+TradingCalendarSource
 ```
 
 业务层不得直接依赖 AKShare 函数。
+
+业务层（`jobs/`）只通过 `sources/registry.py` 的 `SourceRegistry` 获取适配器，
+不直接 import 具体实现——否则"换数据源不改业务代码"这条目标立刻失效。
+
+约定：适配器解析出的异常行由 `fetch_*_with_issues` 返回 `DataQualityIssue`，
+由 job 写入 `ops.quality_issue`，不允许静默丢弃。
 
 ## 4. 数据流水线
 
@@ -99,6 +106,9 @@ quality_status = CONFLICT
 
 记录冲突值，不允许无声覆盖。
 
+已落地的相关约束：`core.etf_quote_daily` 的 upsert 按列合并——历史回补来源
+（新浪）不提供 `iopv` / 买卖盘 / 资金流，不能用 NULL 覆盖快照已写入的值。
+
 ## 7. Research Engine
 
 只处理标准化 Core Facts。
@@ -126,6 +136,13 @@ Asia/Shanghai
 ```
 
 同步必须基于交易日历，不使用 Monday-Friday 简化判断。
+
+实现方式：
+
+- `core.trading_calendar` 保存权威交易日（`etf sync-calendar`）；
+- as-of 日期只由 `jobs/sync_shares.py` 一处解析：非交易日/未到发布时点回退到上一交易日；
+- 历史区间按交易日推进（`MarketCalendar.trading_days_back`），不按自然日；
+- 快照类来源（无自带日期）必须在库中记录 `share_snapshot_date_derived`。
 
 ## 9. 调度
 
@@ -197,3 +214,6 @@ MCP 不直接开放 SQL。
 - 数据回归测试
 
 Live Test 不进入普通 CI 默认路径。
+
+当前覆盖：标识符（含 `.BJ` / `.HK`）、交易日历、份额/净值/持仓解析 fixture、
+行情按列合并、看板口径、份额同步端到端（打桩上游，不访问网络）。

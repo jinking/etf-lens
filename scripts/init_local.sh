@@ -21,6 +21,7 @@ fi
 
 python scripts/bootstrap.py
 etf db-init
+etf sync-calendar
 etf doctor
 
 echo

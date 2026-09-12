@@ -64,7 +64,11 @@ pip install -e ".[dev]"
 python scripts/bootstrap.py
 etf doctor
 etf db-init
+etf sync-calendar
 ```
+
+> `etf sync-calendar` 必须先执行：份额/净值等收盘后数据依赖交易日历判断 as-of
+> 日期，缺失时同步任务会直接报错并给出提示。
 
 启动 API：
 
@@ -103,12 +107,26 @@ curl http://127.0.0.1:8000/health
 ```bash
 etf doctor
 etf db-init
+etf sync-calendar        # 同步交易日历（其余任务的前置）
 etf sync-quotes
+etf sync-nav             # ETF 单位净值
 etf sync-shares
+etf sync-shares --backfill-days 40   # 仅上交所支持按交易日回补
+etf compute-mart         # 计算收益/波动/回撤/流动性/份额变化
 etf show 588200.SH
+etf metrics 588200.SH
+etf screen --tag 半导体 --min-aum 2000000000
 ```
 
 > `sync-*` 命令需要网络和对应上游接口可用。
+
+## 数据口径约束
+
+- 交易日一律来自 `core.trading_calendar`，不用 Monday-Friday 近似；
+- 交易资金（`trading_flow_*`）与申赎估算（`estimated_net_subscription_*`）分开；
+- 估算值带 `is_estimated` 与 `calculation_version`；
+- 跨源拼接（如"深交所份额 + 东方财富净值"）单独记录 `nav_source`；
+- 解析/校验失败的行写入 `ops.quality_issue`，不静默丢弃。
 
 ## 数据目录
 
