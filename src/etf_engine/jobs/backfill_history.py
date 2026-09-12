@@ -1,8 +1,12 @@
 from datetime import datetime
 
 from etf_engine.domain.identifiers import SecurityId
+from etf_engine.domain.quality import error
+from etf_engine.ingestion.reconciler import reconcile_numeric
 from etf_engine.ingestion.run_recorder import IngestionRunRecorder
+from etf_engine.ingestion.source_health import track_source_health
 from etf_engine.jobs.sync_calendar import ensure_market_calendar
+from etf_engine.repositories.quality_issue_repository import QualityIssueRepository
 from etf_engine.repositories.quote_repository import QuoteRepository
 from etf_engine.sources.registry import registry
 
@@ -44,14 +48,55 @@ def backfill_history(
 
     total_fetched = 0
     total_written = 0
+    total_conflicts = 0
     errors: list[str] = []
+    quality = QualityIssueRepository()
+
+    existing = repository.day_closes(targets, start_date, end_date)
 
     for sid in targets:
         try:
-            quotes = source.fetch_history(sid, start_date=start_date, end_date=end_date)
-            for q in quotes:
+            with track_source_health("akshare/history", "etf_history"):
+                quotes = source.fetch_history(sid, start_date=start_date, end_date=end_date)
+
+            accepted = []
+            for quote in quotes:
+                previous = existing.get((quote.security_id, quote.trade_date))
+                if (
+                    previous is not None
+                    and previous[0] is not None
+                    and previous[1] not in (None, quote.source_meta.upstream_source)
+                    and quote.close is not None
+                ):
+                    # 同一天、同为"日收盘"、但来自不同来源：超过容忍阈值就记 CONFLICT，
+                    # 并且不覆盖已入库的值（TECHNICAL §6：不允许无声覆盖）。
+                    result = reconcile_numeric(
+                        {
+                            str(previous[1]): float(previous[0]),
+                            str(quote.source_meta.upstream_source): float(quote.close),
+                        }
+                    )
+                    if result.quality_status == "CONFLICT":
+                        total_conflicts += 1
+                        quality.record(
+                            dataset="etf_quote",
+                            issues=[
+                                error(
+                                    "close_source_conflict",
+                                    f"{quote.security_id} {quote.trade_date} "
+                                    f"{previous[1]}={previous[0]} vs "
+                                    f"{quote.source_meta.upstream_source}={quote.close}",
+                                )
+                            ],
+                            security_id=quote.security_id,
+                            trade_date=quote.trade_date,
+                        )
+                        continue
+                accepted.append(quote)
+
+            for q in accepted:
                 q.source_meta.ingestion_run_id = run_id
-            written = repository.upsert_many(quotes)
+            written = repository.upsert_many(accepted)
             total_fetched += len(quotes)
             total_written += written
         except Exception as exc:
@@ -72,5 +117,6 @@ def backfill_history(
         "target_count": len(targets),
         "rows_fetched": total_fetched,
         "rows_written": total_written,
+        "conflicts": total_conflicts,
         "errors": errors,
     }

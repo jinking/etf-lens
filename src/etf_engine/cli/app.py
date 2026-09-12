@@ -7,6 +7,7 @@ import uvicorn
 from etf_engine.config.settings import settings
 from etf_engine.db.migrate import run_migrations
 from etf_engine.jobs.backfill_history import backfill_history
+from etf_engine.jobs.backfill_nav import backfill_nav
 from etf_engine.jobs.compute_mart import compute_mart
 from etf_engine.jobs.sync_calendar import sync_calendar
 from etf_engine.jobs.sync_holdings import sync_holdings
@@ -81,6 +82,24 @@ def sync_shares_cmd(
 def sync_nav_cmd(trade_date: str | None = None):
     parsed = date.fromisoformat(trade_date) if trade_date else None
     result = sync_nav(parsed)
+    typer.echo(result)
+
+
+@app.command("backfill-nav")
+def backfill_nav_cmd(
+    security_ids: list[str] = typer.Option(
+        None, "--security-id", "-s", help="指定待回补净值的证券代码"
+    ),
+    days: int = typer.Option(60, "--days", "-d", help="需要覆盖的交易日数量"),
+    limit: int = typer.Option(50, "--limit", "-n", help="本次最多回补多少只基金"),
+    sleep_seconds: float = typer.Option(0.3, "--sleep", help="每只基金之间的间隔秒数"),
+):
+    result = backfill_nav(
+        security_ids=security_ids or None,
+        days=days,
+        limit=limit,
+        sleep_seconds=sleep_seconds,
+    )
     typer.echo(result)
 
 

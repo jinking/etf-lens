@@ -232,3 +232,23 @@ class QuoteRepository:
                 [limit],
             ).fetchall()
         return [row[0] for row in rows]
+
+    def day_closes(
+        self, security_ids: list[str], start_date, end_date
+    ) -> dict[tuple[str, object], tuple[float | None, str | None]]:
+        """按 (security_id, trade_date) 取已入库的收盘价与来源，用于多源对账。"""
+        if not security_ids:
+            return {}
+
+        placeholders = ",".join(["?"] * len(security_ids))
+        with connect(settings.database_path) as con:
+            rows = con.execute(
+                f"""
+                SELECT security_id, trade_date, close, upstream_source
+                FROM core.etf_quote_daily
+                WHERE security_id IN ({placeholders})
+                  AND trade_date BETWEEN ? AND ?
+                """,
+                [*security_ids, start_date, end_date],
+            ).fetchall()
+        return {(row[0], row[1]): (row[2], row[3]) for row in rows}

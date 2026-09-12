@@ -4,6 +4,7 @@ from etf_engine.config.settings import settings
 from etf_engine.domain.quality import DataQualityIssue, error, warn
 from etf_engine.ingestion.raw_store import RawSnapshotStore
 from etf_engine.ingestion.run_recorder import IngestionRunRecorder
+from etf_engine.ingestion.source_health import track_source_health
 from etf_engine.ingestion.validator import validate_share
 from etf_engine.jobs.sync_calendar import ensure_market_calendar
 from etf_engine.repositories.nav_repository import NavRepository
@@ -40,10 +41,11 @@ def sync_shares(trade_date: date | None = None, backfill_days: int = 1) -> dict:
         parse_issues: list[DataQualityIssue] = []
         try:
             backfill = backfill_days > 1 and source.supports_history_backfill
-            if backfill:
-                shares, parse_issues = source.fetch_shares_history(asof, backfill_days)
-            else:
-                shares, parse_issues = source.fetch_shares_with_issues(trade_date=asof)
+            with track_source_health(source_name, "etf_share"):
+                if backfill:
+                    shares, parse_issues = source.fetch_shares_history(asof, backfill_days)
+                else:
+                    shares, parse_issues = source.fetch_shares_with_issues(trade_date=asof)
 
             snapshot_date = max(item.trade_date for item in shares) if shares else asof
             if shares and getattr(source, "snapshot_date_is_derived", False):

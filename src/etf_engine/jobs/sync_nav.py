@@ -3,6 +3,7 @@ from datetime import date
 from etf_engine.config.settings import settings
 from etf_engine.ingestion.raw_store import RawSnapshotStore
 from etf_engine.ingestion.run_recorder import IngestionRunRecorder
+from etf_engine.ingestion.source_health import track_source_health
 from etf_engine.repositories.nav_repository import NavRepository
 from etf_engine.repositories.quality_issue_repository import QualityIssueRepository
 from etf_engine.sources.registry import registry
@@ -22,7 +23,8 @@ def sync_nav(trade_date: date | None = None) -> dict:
     run_id = recorder.start("etf_nav", "akshare", trade_date)
 
     try:
-        navs, issues = source.fetch_navs_with_issues(trade_date=trade_date)
+        with track_source_health("akshare/eastmoney", "etf_nav"):
+            navs, issues = source.fetch_navs_with_issues(trade_date=trade_date)
 
         if navs:
             raw_store.write_records(

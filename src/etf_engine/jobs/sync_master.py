@@ -3,6 +3,7 @@ from datetime import datetime
 from etf_engine.config.settings import settings
 from etf_engine.ingestion.raw_store import RawSnapshotStore
 from etf_engine.ingestion.run_recorder import IngestionRunRecorder
+from etf_engine.ingestion.source_health import track_source_health
 from etf_engine.repositories.master_repository import MasterRepository
 from etf_engine.repositories.quality_issue_repository import QualityIssueRepository
 from etf_engine.sources.registry import registry
@@ -17,7 +18,8 @@ def sync_master() -> dict:
     run_id = recorder.start("etf_master", "unified_master", None)
 
     try:
-        masters, issues = source.fetch_masters_with_issues()
+        with track_source_health("akshare/ths_szse", "etf_master"):
+            masters, issues = source.fetch_masters_with_issues()
         today = datetime.now().date()
 
         if masters:

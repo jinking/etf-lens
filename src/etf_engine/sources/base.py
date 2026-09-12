@@ -82,6 +82,23 @@ class ETFNavSource(ABC):
         return self.fetch_navs(trade_date=trade_date), []
 
 
+class ETFNavHistorySource(ABC):
+    """按基金逐个拉取净值历史。
+
+    净值历史没有"全市场一次拉完"的接口，只能逐只基金请求；因此该能力被设计成
+    独立接口，由回补任务有界、限速地调用，不能放在日常同步链路里。
+    """
+
+    @abstractmethod
+    def fetch_nav_history(self, security_id: str, start_date: date, end_date: date) -> list[ETFNav]:
+        raise NotImplementedError
+
+    def fetch_nav_history_with_issues(
+        self, security_id: str, start_date: date, end_date: date
+    ) -> tuple[list[ETFNav], list[DataQualityIssue]]:
+        return self.fetch_nav_history(security_id, start_date, end_date), []
+
+
 class ETFHoldingSource(ABC):
     @abstractmethod
     def fetch_holdings(self, security_id: str, report_date: date | None = None) -> list[ETFHolding]:

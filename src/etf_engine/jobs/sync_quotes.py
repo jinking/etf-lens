@@ -4,6 +4,7 @@ from etf_engine.config.settings import settings
 from etf_engine.domain.quality import error
 from etf_engine.ingestion.raw_store import RawSnapshotStore
 from etf_engine.ingestion.run_recorder import IngestionRunRecorder
+from etf_engine.ingestion.source_health import track_source_health
 from etf_engine.ingestion.validator import validate_quote
 from etf_engine.jobs.sync_calendar import ensure_market_calendar
 from etf_engine.repositories.quality_issue_repository import QualityIssueRepository
@@ -22,7 +23,8 @@ def sync_quotes(trade_date: date | None = None) -> dict:
     run_id = recorder.start("etf_quote", "akshare", trade_date)
 
     try:
-        quotes = source.fetch_quotes(trade_date=trade_date)
+        with track_source_health("akshare/eastmoney", "etf_quote"):
+            quotes = source.fetch_quotes(trade_date=trade_date)
 
         if quotes:
             snapshot_date = quotes[0].trade_date

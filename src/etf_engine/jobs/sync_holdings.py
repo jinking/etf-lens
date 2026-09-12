@@ -1,6 +1,7 @@
 from etf_engine.domain.identifiers import SecurityId
 from etf_engine.domain.quality import error, warn
 from etf_engine.ingestion.run_recorder import IngestionRunRecorder
+from etf_engine.ingestion.source_health import track_source_health
 from etf_engine.repositories.holding_repository import HoldingRepository
 from etf_engine.repositories.quality_issue_repository import QualityIssueRepository
 from etf_engine.repositories.quote_repository import QuoteRepository
@@ -42,7 +43,8 @@ def sync_holdings(
 
     for sid in targets:
         try:
-            holdings, parse_issues = source.fetch_holdings_with_issues(sid)
+            with track_source_health("akshare/eastmoney", "etf_holding"):
+                holdings, parse_issues = source.fetch_holdings_with_issues(sid)
             total_issues += quality_repo.record(
                 dataset="etf_holding",
                 issues=parse_issues,

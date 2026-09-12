@@ -47,10 +47,15 @@ def compute_mart(security_ids: list[str] | None = None) -> dict:
 
                 s_rows = con.execute(
                     """
-                    SELECT trade_date, shares, nav
-                    FROM core.etf_share_daily
-                    WHERE security_id = ?
-                    ORDER BY trade_date
+                    SELECT s.trade_date,
+                           s.shares,
+                           COALESCE(s.nav, n.unit_nav) AS nav
+                    FROM core.etf_share_daily s
+                    LEFT JOIN core.etf_nav_daily n
+                           ON n.security_id = s.security_id
+                          AND n.nav_date = s.trade_date
+                    WHERE s.security_id = ?
+                    ORDER BY s.trade_date
                     """,
                     [sid],
                 ).fetchall()
