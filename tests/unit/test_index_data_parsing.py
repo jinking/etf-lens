@@ -5,9 +5,9 @@ import pandas as pd
 import pytest
 
 from etf_engine.sources.akshare.index_data import (
-    parse_benchmark_frame,
     parse_constituent_frame,
     parse_csindex_catalog,
+    parse_fund_profile,
     parse_index_quote_frame,
     parse_sina_symbols,
 )
@@ -81,18 +81,23 @@ def test_index_quotes_require_a_date_column():
         )
 
 
-def test_benchmark_frame_extracts_the_benchmark_value():
-    frame = pd.DataFrame(
-        [
-            {"字段": "基金代码", "值": "588200"},
-            {"字段": "业绩比较基准", "值": "上证科创板芯片指数收益率"},
-        ]
-    )
-
-    assert parse_benchmark_frame(frame) == "上证科创板芯片指数收益率"
+PROFILE_HTML = """
+<table>
+  <tr><th>跟踪标的</th><td>&nbsp;中证500指数&nbsp;</td></tr>
+  <tr><th>业绩比较基准</th><td>中证500指数收益率</td></tr>
+</table>
+"""
 
 
-def test_benchmark_frame_without_benchmark_returns_none():
-    frame = pd.DataFrame([{"字段": "基金代码", "值": "588200"}])
+def test_fund_profile_extracts_tracking_target_and_benchmark():
+    assert parse_fund_profile(PROFILE_HTML) == ("中证500指数", "中证500指数收益率")
 
-    assert parse_benchmark_frame(frame) is None
+
+def test_fund_profile_without_fields_returns_none():
+    assert parse_fund_profile("<html><body>无字段</body></html>") == (None, None)
+
+
+def test_fund_profile_strips_inner_tags():
+    html = "<th>跟踪标的</th><td><a href='#'>创业板指数</a>(价格)</td>"
+
+    assert parse_fund_profile(html)[0] == "创业板指数(价格)"

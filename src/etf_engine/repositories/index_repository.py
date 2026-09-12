@@ -96,6 +96,21 @@ class IndexRepository:
             rows = con.execute(sql, values).fetchall()
         return [(row[0], row[1]) for row in rows]
 
+    def set_master_index_name(self, records: list[tuple[str, str]]) -> int:
+        """只回填跟踪指数名称（代码未解析出来时也保留名称这一事实）。"""
+        if not records:
+            return 0
+        with connect(settings.database_path) as con:
+            con.executemany(
+                """
+                UPDATE core.etf_master
+                SET tracking_index_name = COALESCE(tracking_index_name, ?)
+                WHERE security_id = ?
+                """,
+                [(name, security_id) for security_id, name in records],
+            )
+        return len(records)
+
     def upsert_constituents(self, records: list[IndexConstituent]) -> int:
         if not records:
             return 0

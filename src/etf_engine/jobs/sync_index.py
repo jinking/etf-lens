@@ -121,6 +121,7 @@ def sync_index_map(
     name_catalog = {index_id: [entry["index_name"]] for index_id, entry in catalog.items()}
     run_id = recorder.start("etf_index_map", "fund_benchmark", None)
     records: list[dict] = []
+    unnamed: list[tuple[str, str]] = []
     issues: list[DataQualityIssue] = []
     failures = 0
 
@@ -139,6 +140,8 @@ def sync_index_map(
 
         matched = match_index(benchmark, name_catalog)
         if matched is None:
+            # 代码没对齐，但"跟踪标的名"是基金披露的事实，仍然保留下来。
+            unnamed.append((security_id, benchmark))
             issues.append(warn("index_match_failed", f"{security_id} 业绩比较基准={benchmark!r}"))
             continue
 
@@ -157,6 +160,7 @@ def sync_index_map(
             time.sleep(sleep_seconds)
 
     written = repository.upsert_map(records)
+    repository.set_master_index_name(unnamed)
     issues_written = quality.record(dataset="etf_index_map", issues=issues)
     status = "SUCCESS" if failures == 0 else ("PARTIAL" if records else "FAILED")
     recorder.finish(

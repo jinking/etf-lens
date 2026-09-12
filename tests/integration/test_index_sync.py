@@ -159,6 +159,14 @@ def test_index_catalog_then_map_then_details(tmp_path, monkeypatch):
     assert master == ("000300",), "master 的跟踪指数同步回填"
     assert "index_quote_source_missing" in issues, "没有行情符号的指数必须留痕"
 
+    with connect(settings.database_path) as con:
+        unmatched_name = con.execute(
+            "SELECT tracking_index_name FROM core.etf_master WHERE security_id = '588200.SH'"
+        ).fetchone()
+    assert unmatched_name == ("某个没有对应指数的基准收益率",), (
+        "代码没对齐也要保留基金披露的跟踪标的名"
+    )
+
 
 def test_index_map_requires_catalog_first(tmp_path, monkeypatch):
     _prepare(tmp_path, monkeypatch)
