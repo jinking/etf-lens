@@ -65,6 +65,20 @@ class CoreMetricsRepository:
             )
             if rows:
                 return rows[0]
+            # 跟踪关系的生效日未知，映射表里的 valid_from 只是"观测日"：当 as-of
+            # 早于观测日时，退回到最近一条已知映射，而不是直接跳到 master 副本。
+            rows = self._rows(
+                con,
+                """
+                SELECT index_id, index_name, source FROM core.etf_index_map
+                WHERE etf_id = ?
+                ORDER BY valid_from DESC NULLS LAST
+                LIMIT 1
+                """,
+                [security_id],
+            )
+            if rows:
+                return rows[0]
             rows = self._rows(
                 con,
                 """

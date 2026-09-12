@@ -1,19 +1,18 @@
-"""指数目录、指数成分、指数行情与基金跟踪标的适配器。
+"""指数目录、指数成分与指数行情适配器。
 
 - 指数目录：中证指数公司全量清单（代码/全称/简称）∪ 新浪指数列表（含行情符号）。
   两者取并集，因为深证系列与上证自编指数不在中证清单里，但它们的行情是可得事实。
 - 指数成分：中证指数成分权重（含成分券与权重）。
 - 指数行情：新浪指数日线（仅覆盖新浪在列的指数，其余如实标注来源缺失）。
-- 跟踪标的：东方财富基金概况页的"跟踪标的"字段，缺失时退回"业绩比较基准"。
+
+基金侧披露的"跟踪标的"在 :mod:`etf_engine.sources.akshare.fund_profile`。
 """
 
-import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 import akshare as ak
 import pandas as pd
-import requests
 
 from etf_engine.domain.enums import QualityStatus
 from etf_engine.domain.identifiers import SecurityId
@@ -26,15 +25,6 @@ from etf_engine.domain.models import (
 from etf_engine.domain.quality import DataQualityIssue, error, warn
 from etf_engine.sources.base import IndexConstituentSource
 
-FUND_PROFILE_URL = "https://fundf10.eastmoney.com/jbgk_{code}.html"
-
-#: 基金概况页里"跟踪标的"与"业绩比较基准"两个字段。
-_PROFILE_FIELD = {
-    "tracking_target": re.compile(r"跟踪标的</th>\s*<td[^>]*>(.*?)</td>", re.S),
-    "benchmark": re.compile(r"业绩比较基准</th>\s*<td[^>]*>(.*?)</td>", re.S),
-}
-_HTML_TAG = re.compile(r"<[^>]+>")
-
 
 def _decimal(value) -> Decimal | None:
     if value is None or pd.isna(value):
@@ -43,21 +33,6 @@ def _decimal(value) -> Decimal | None:
         return Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
-
-
-def _clean_html_text(value: str | None) -> str | None:
-    if not value:
-        return None
-    return _HTML_TAG.sub("", value).replace("&nbsp;", " ").strip() or None
-
-
-def parse_fund_profile(html: str) -> tuple[str | None, str | None]:
-    """从基金概况页解析 ``(跟踪标的, 业绩比较基准)``。"""
-    fields: list[str | None] = []
-    for key in ("tracking_target", "benchmark"):
-        match = _PROFILE_FIELD[key].search(html)
-        fields.append(_clean_html_text(match.group(1)) if match else None)
-    return fields[0], fields[1]
 
 
 def parse_csindex_catalog(frame: pd.DataFrame) -> list[tuple[str, str, str]]:
@@ -298,26 +273,3 @@ def missing_quote_source_issue(index_id: str) -> DataQualityIssue:
         "index_quote_source_missing",
         f"{index_id} 在目录里没有行情符号（新浪未收录该指数），指数行情留空",
     )
-
-
-class AkshareFundProfileSource:
-    """按基金取"跟踪标的"与"业绩比较基准"（东方财富基金概况页）。
-
-    同花顺的基金概况接口覆盖不稳定（同一只 ETF 时而成功时而"未找到基金信息"），
-    因此改用东方财富概况页：它同时给出"跟踪标的"字段，比只解析基准文本更精确。
-    """
-
-    def fetch_profile(self, security_id: str) -> tuple[str | None, str | None]:
-        sid = SecurityId.parse(security_id)
-        response = requests.get(
-            FUND_PROFILE_URL.format(code=sid.ticker),
-            headers={"User-Agent": "Mozilla/5.0"},
-            timeout=20.0,
-        )
-        response.raise_for_status()
-        return parse_fund_profile(response.text)
-
-    def fetch_benchmark(self, security_id: str) -> str | None:
-        """跟踪指数候选文本：优先"跟踪标的"，缺失时退回"业绩比较基准"。"""
-        tracking_target, benchmark = self.fetch_profile(security_id)
-        return tracking_target or benchmark

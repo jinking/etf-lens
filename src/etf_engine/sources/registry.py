@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 
 from etf_engine.sources.akshare.calendar import AkshareTradingCalendarSource
+from etf_engine.sources.akshare.fund_profile import AkshareFundProfileSource
 from etf_engine.sources.akshare.history import AkshareETFHistorySource
 from etf_engine.sources.akshare.holdings import AkshareETFHoldingSource
 from etf_engine.sources.akshare.index_data import (
-    AkshareFundProfileSource,
     AkshareIndexCatalogSource,
     AkshareIndexConstituentSource,
     AkshareIndexQuoteSource,
@@ -41,6 +41,7 @@ class SourceRegistry:
     index_constituent_source = AkshareIndexConstituentSource
     index_quote_source = AkshareIndexQuoteSource
     index_benchmark_source = AkshareFundProfileSource
+    fund_profile_source = AkshareFundProfileSource
     share_sources = (SSEETFShareSource, SZSEETFShareSource)
 
 

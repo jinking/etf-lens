@@ -32,9 +32,10 @@
 - [x] SSE Share Adapter（显式 `STAT_DATE`，按交易日回补）
 - [x] SZSE Share Adapter（快照日期由交易日历推导并留痕）
 - [x] Share Snapshot
-- [x] NAV（东方财富场内净值，单位净值；最近两个交易日）
-- [x] Flow Research（`share_change_*`、`estimated_net_subscription_1d`）
+- [x] NAV（东方财富场内净值，单位净值；最近两个交易日 + 逐只基金历史回补）
+- [x] Flow Research（`share_change_*`、`estimated_net_subscription_1d/5d/20d`）
 - [x] 历史份额积累（上交所 40 个交易日已回补；深交所只能逐日积累）
+- [x] 基金档案补齐（费率/成立日期/管理人/托管人/跟踪标的，沪深同一口径）
 
 验收：
 
@@ -105,7 +106,8 @@ estimated_net_subscription
    目录无法给出代码 → 不写 `etf_index_map`，只保留披露的指数名称。
 4. **债/商品/海外指数**：中债系列、黄金 AU99.99、恒生/纳斯达克等不在 A 股指数口径内，
    一律记为未匹配，不用近似指数顶替。
-5. **沪市档案字段**：管理人/上市日期只有深交所官方来源，沪市 ETF 该部分仍为 NULL。
+5. **上市日期**：`listed_date` 仍只有深交所官方列表提供，沪市 ETF 为 NULL；
+   管理人/费率/成立日期已由 `etf sync-fund-profile` 补齐。
 6. **持仓披露日**：`core.etf_holding_disclosure.disclosure_date` 上游不提供，保持 NULL。
-7. **`tracking_error_60d`**：需要"指数行情 + 净值"同时具备 40 个对齐交易日；
-   指数行情已有 90 个交易日，净值需通过 `etf backfill-nav` 补齐后才会产出。
+7. **`tracking_error_60d` 覆盖**：需"指数行情 + 净值"同时具备 40 个对齐交易日。
+   510300 等已可产出（实测 0.53%）；扩大覆盖要继续跑 `etf backfill-nav`。

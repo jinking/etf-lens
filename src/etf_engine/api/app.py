@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from etf_engine.jobs.backfill_nav import backfill_nav
 from etf_engine.jobs.compute_mart import compute_mart
 from etf_engine.jobs.sync_calendar import sync_calendar
+from etf_engine.jobs.sync_fund_profile import sync_fund_profile
 from etf_engine.jobs.sync_holdings import sync_holdings
 from etf_engine.jobs.sync_index import sync_index_catalog, sync_index_details, sync_index_map
 from etf_engine.jobs.sync_industry import sync_industry
@@ -175,6 +176,16 @@ def sync_stock_industry(security_ids: list[str] | None = None):
         result = sync_industry(security_ids=security_ids)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"行业分类同步失败：{exc}") from exc
+    return {"data": result, "meta": {}, "errors": []}
+
+
+@app.post("/api/v1/sync/fund-profile")
+def sync_fund_profiles(security_ids: list[str] | None = None, limit: int = 50):
+    """补齐 master 的费率/成立日期/管理人/托管人等档案字段。"""
+    try:
+        result = sync_fund_profile(security_ids=security_ids, limit=limit)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"基金档案同步失败：{exc}") from exc
     return {"data": result, "meta": {}, "errors": []}
 
 

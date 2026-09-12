@@ -112,3 +112,47 @@ class MasterRepository:
     def count(self) -> int:
         with connect(settings.database_path) as con:
             return int(con.execute("SELECT count(*) FROM core.etf_master").fetchone()[0])
+
+    def enrich_from_profile(self, profiles: list) -> int:
+        """用基金档案补齐 master 的空字段。
+
+        只补空（``COALESCE``）：档案是"静态披露事实"，不覆盖行情源写过的字段，
+        也不改写 ``source``（那是抓取来源的溯源字段，档案不是它的事实来源）。
+        """
+        if not profiles:
+            return 0
+
+        rows = [
+            (
+                profile.fund_name,
+                profile.short_name,
+                profile.fund_type,
+                profile.established_date,
+                profile.manager_name,
+                profile.custodian_name,
+                float(profile.management_fee_pct)
+                if profile.management_fee_pct is not None
+                else None,
+                float(profile.custodian_fee_pct) if profile.custodian_fee_pct is not None else None,
+                profile.tracking_target,
+                profile.security_id,
+            )
+            for profile in profiles
+        ]
+        sql = """
+        UPDATE core.etf_master SET
+            fund_name = COALESCE(fund_name, ?),
+            short_name = COALESCE(short_name, ?),
+            fund_type = COALESCE(fund_type, ?),
+            established_date = COALESCE(established_date, ?),
+            manager_name = COALESCE(manager_name, ?),
+            custodian_name = COALESCE(custodian_name, ?),
+            management_fee_pct = COALESCE(management_fee_pct, ?),
+            custodian_fee_pct = COALESCE(custodian_fee_pct, ?),
+            tracking_index_name = COALESCE(tracking_index_name, ?),
+            updated_at = now()
+        WHERE security_id = ?
+        """
+        with connect(settings.database_path) as con:
+            con.executemany(sql, rows)
+        return len(rows)

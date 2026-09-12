@@ -12,8 +12,10 @@ from etf_engine.db.connection import connect
 from etf_engine.db.migrate import run_migrations
 from etf_engine.domain.enums import QualityStatus
 from etf_engine.domain.models import ETFQuote, ETFShare, SourceMeta
+from etf_engine.repositories.index_repository import IndexRepository
 from etf_engine.repositories.quote_repository import QuoteRepository
 from etf_engine.repositories.share_repository import ShareRepository
+from etf_engine.services.core_metrics_service import ETFCoreMetricsService
 
 
 def _meta() -> SourceMeta:
@@ -159,3 +161,35 @@ def test_metrics_cli_returns_the_same_core_metrics_payload(tmp_path, monkeypatch
 
     assert result.exit_code == 0
     assert '"security_id": "588200.SH"' in result.stdout
+
+
+def test_tracking_index_prefers_the_mapping_even_when_recorded_later(tmp_path, monkeypatch):
+    """映射的 valid_from 只是观测日；as-of 早于观测日时也应命中映射而非 master 副本。"""
+    monkeypatch.setattr(settings, "database_path", tmp_path / "etf.duckdb")
+    run_migrations()
+    QuoteRepository().upsert_many(
+        [
+            ETFQuote(
+                security_id="510300.SH",
+                trade_date=date(2026, 9, 11),
+                close=Decimal("1"),
+                source_meta=_meta(),
+            )
+        ]
+    )
+    IndexRepository().upsert_map(
+        [
+            {
+                "etf_id": "510300.SH",
+                "index_id": "000300",
+                "index_name": "沪深300指数",
+                "valid_from": date(2026, 9, 12),  # 观测日晚于 as-of
+                "source": "fund_benchmark",
+            }
+        ]
+    )
+
+    metrics = ETFCoreMetricsService().get_core_metrics("510300.SH", date(2026, 9, 11))
+
+    assert metrics.tracking_index.id == "000300"
+    assert metrics.tracking_index.source == "fund_benchmark"

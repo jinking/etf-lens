@@ -9,4 +9,5 @@ etf sync-calendar
 etf sync-quotes
 etf sync-nav
 etf sync-shares
+etf sync-fund-profile --limit 20
 etf compute-mart

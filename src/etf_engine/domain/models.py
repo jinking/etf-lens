@@ -147,3 +147,24 @@ class IndexQuote(BaseModel):
     close: Decimal | None = None
     currency: str | None = "CNY"
     source_meta: SourceMeta
+
+
+class FundProfile(BaseModel):
+    """基金披露的档案事实（东方财富基金概况页）。
+
+    这些字段是基金公司披露的静态信息，与行情无关；用于补齐
+    ``core.etf_master`` 里费率、成立日期、管理人等长期缺失的字段。
+    """
+
+    security_id: str
+    fund_name: str | None = None
+    short_name: str | None = None
+    fund_type: str | None = None
+    established_date: date | None = None
+    manager_name: str | None = None
+    custodian_name: str | None = None
+    management_fee_pct: Decimal | None = None
+    custodian_fee_pct: Decimal | None = None
+    tracking_target: str | None = None
+    benchmark: str | None = None
+    source_meta: SourceMeta

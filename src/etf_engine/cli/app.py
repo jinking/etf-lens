@@ -10,6 +10,7 @@ from etf_engine.jobs.backfill_history import backfill_history
 from etf_engine.jobs.backfill_nav import backfill_nav
 from etf_engine.jobs.compute_mart import compute_mart
 from etf_engine.jobs.sync_calendar import sync_calendar
+from etf_engine.jobs.sync_fund_profile import sync_fund_profile
 from etf_engine.jobs.sync_holdings import sync_holdings
 from etf_engine.jobs.sync_index import sync_index_catalog, sync_index_details, sync_index_map
 from etf_engine.jobs.sync_industry import sync_industry
@@ -182,6 +183,22 @@ def sync_industry_cmd(
 @app.command("sync-index-catalog")
 def sync_index_catalog_cmd():
     typer.echo(sync_index_catalog())
+
+
+@app.command("sync-fund-profile")
+def sync_fund_profile_cmd(
+    security_ids: list[str] = typer.Option(
+        None, "--security-id", "-s", help="指定待补齐档案的 ETF"
+    ),
+    limit: int = typer.Option(50, "--limit", "-n", help="本次最多处理多少只 ETF"),
+    sleep_seconds: float = typer.Option(0.3, "--sleep", help="每只 ETF 之间的间隔秒数"),
+):
+    """补齐 master 的费率/成立日期/管理人/托管人等档案字段。"""
+    typer.echo(
+        sync_fund_profile(
+            security_ids=security_ids or None, limit=limit, sleep_seconds=sleep_seconds
+        )
+    )
 
 
 @app.command("sync-index-map")

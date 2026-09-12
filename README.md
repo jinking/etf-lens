@@ -116,6 +116,7 @@ etf sync-shares --backfill-days 40   # 仅上交所支持按交易日回补
 etf backfill-nav --days 60 --limit 50 # 逐只基金回补净值历史（解锁 5/20 日申赎估算）
 etf sync-holdings        # 披露持仓 + 行业穿透标签
 etf sync-industry        # 个股行业分类（cninfo，A 股口径）
+etf sync-fund-profile    # 补齐费率/成立日期/管理人等档案字段（沪深都能拿到）
 etf sync-index-catalog   # 指数目录
 etf sync-index-map --limit 50        # ETF→跟踪指数（按基金披露的跟踪标的）
 etf sync-index-details   # 指数成分 + 指数行情
