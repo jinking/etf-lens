@@ -106,3 +106,12 @@ def test_duplicate_frames_for_the_same_stock_are_not_written_twice():
     industries, _ = parse_industry_frames(frames, fetched_at=FETCHED_AT)
 
     assert [industry.stock_id for industry in industries] == ["002594.SZ"]
+
+
+def test_frame_with_unexpected_shape_is_reported_not_silently_skipped():
+    frame = pd.DataFrame([{"证券代码": "002594", "行业大类": "乘用车"}])
+
+    industries, issues = parse_industry_frames([frame], fetched_at=FETCHED_AT)
+
+    assert industries == []
+    assert [issue.rule_name for issue in issues] == ["industry_frame_shape_changed"]

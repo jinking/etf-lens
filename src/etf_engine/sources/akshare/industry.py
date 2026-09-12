@@ -21,6 +21,12 @@ STANDARD_PREFERENCE = ("中证行业分类标准", "中国上市公司协会上�
 #: 行业名称的取值优先级：大类 > 次类 > 门类。
 INDUSTRY_FIELDS = ("行业大类", "行业次类", "行业门类")
 
+#: cninfo 是 A 股登记/分类口径，不覆盖港股。
+SUPPORTED_EXCHANGES = ("SSE", "SZSE", "BJSE")
+
+#: 解析所需的列，缺列说明返回体形状变了，必须报出来而不是猜。
+REQUIRED_COLUMNS = ("证券代码", "分类标准", "变更日期")
+
 
 def parse_industry_frames(
     frames: list[pd.DataFrame],
@@ -39,7 +45,9 @@ def parse_industry_frames(
     for frame in frames:
         if frame is None or frame.empty:
             continue
-        if "证券代码" not in frame.columns:
+        missing = [column for column in REQUIRED_COLUMNS if column not in frame.columns]
+        if missing:
+            issues.append(warn("industry_frame_shape_changed", f"缺少列 {missing}"))
             continue
 
         latest = frame.copy()
@@ -107,6 +115,15 @@ class AkshareStockIndustrySource:
 
         for security_id in security_ids:
             sid = SecurityId.parse(security_id)
+            if sid.exchange.value not in SUPPORTED_EXCHANGES:
+                # 港股/海外标的没有 A 股行业分类，如实标注来源不适用。
+                issues.append(
+                    warn(
+                        "industry_source_not_applicable",
+                        f"{sid.value} 不在 cninfo（A 股）分类口径内",
+                    )
+                )
+                continue
             try:
                 frame = ak.stock_industry_change_cninfo(
                     symbol=sid.ticker,

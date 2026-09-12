@@ -55,9 +55,7 @@ def sync_industry(
     for security_id in targets:
         try:
             with track_source_health("cninfo", "stock_industry"):
-                fetched, fetch_issues = with_retry(
-                    partial(source.fetch_industries, [security_id])
-                )
+                fetched, fetch_issues = with_retry(partial(source.fetch_industries, [security_id]))
         except Exception as exc:
             failures += 1
             issues.append(error("industry_fetch_failed", f"{security_id}: {exc}"))
