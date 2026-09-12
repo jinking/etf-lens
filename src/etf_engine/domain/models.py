@@ -114,3 +114,25 @@ class IndexConstituent(BaseModel):
     stock_name: str | None = None
     weight_pct: Decimal | None = None
     source_meta: SourceMeta
+
+
+class StockIndustry(BaseModel):
+    """个股行业分类事实。
+
+    ``classification_standard`` 记录分类标准（如"中证行业分类标准"），
+    不同标准不合并——行业不是唯一事实，口径必须可追溯。
+    """
+
+    stock_id: str
+    stock_name: str | None = None
+    industry_name: str
+    industry_code: str | None = None
+    classification_standard: str | None = None
+    source_meta: SourceMeta
+
+
+class IndexCatalogEntry(BaseModel):
+    index_id: str
+    index_name: str
+    market_symbol: str | None = None
+    source_meta: SourceMeta

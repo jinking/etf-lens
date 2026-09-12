@@ -18,17 +18,22 @@ class TagRepository:
                     r.get("source", "holding_penetration"),
                     r.get("valid_from"),
                     r.get("valid_to"),
+                    r.get("calculation_version"),
+                    r.get("coverage"),
                 )
             )
 
         sql = """
         INSERT INTO core.etf_tag (
-            etf_id, tag, tag_type, confidence, source, valid_from, valid_to
-        ) VALUES (?,?,?,?,?,?,?)
+            etf_id, tag, tag_type, confidence, source, valid_from, valid_to,
+            calculation_version, coverage
+        ) VALUES (?,?,?,?,?,?,?,?,?)
         ON CONFLICT (etf_id, tag, tag_type, valid_from) DO UPDATE SET
             confidence = EXCLUDED.confidence,
             source = EXCLUDED.source,
-            valid_to = EXCLUDED.valid_to
+            valid_to = EXCLUDED.valid_to,
+            calculation_version = EXCLUDED.calculation_version,
+            coverage = EXCLUDED.coverage
         """
 
         with connect(settings.database_path) as con:
@@ -39,7 +44,8 @@ class TagRepository:
         with connect(settings.database_path) as con:
             rows = con.execute(
                 """
-                SELECT tag, tag_type, confidence FROM core.etf_tag
+                SELECT tag, tag_type, confidence, coverage, calculation_version
+                FROM core.etf_tag
                 WHERE etf_id = ? ORDER BY confidence DESC
                 """,
                 [etf_id],

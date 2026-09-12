@@ -11,6 +11,7 @@ from etf_engine.jobs.backfill_nav import backfill_nav
 from etf_engine.jobs.compute_mart import compute_mart
 from etf_engine.jobs.sync_calendar import sync_calendar
 from etf_engine.jobs.sync_holdings import sync_holdings
+from etf_engine.jobs.sync_industry import sync_industry
 from etf_engine.jobs.sync_master import sync_master
 from etf_engine.jobs.sync_nav import sync_nav
 from etf_engine.jobs.sync_quotes import sync_quotes
@@ -152,6 +153,17 @@ def sync_holdings_cmd(
     top_n: int = typer.Option(20, "--top-n", "-n", help="按成交额自动选取前N只ETF"),
 ):
     result = sync_holdings(security_ids=security_ids or None, top_n=top_n)
+    typer.echo(result)
+
+
+@app.command("sync-industry")
+def sync_industry_cmd(
+    security_ids: list[str] = typer.Option(
+        None, "--security-id", "-s", help="指定待同步行业分类的个股"
+    ),
+    sleep_seconds: float = typer.Option(0.2, "--sleep", help="每只个股之间的间隔秒数"),
+):
+    result = sync_industry(security_ids=security_ids or None, sleep_seconds=sleep_seconds)
     typer.echo(result)
 
 
