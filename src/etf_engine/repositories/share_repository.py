@@ -12,6 +12,7 @@ class ShareRepository:
         for s in shares:
             estimated_aum = None
             if s.nav is not None:
+                # 估算规模 = 份额 × 单位净值，属于派生值，必须带 is_estimated 标记。
                 estimated_aum = float(s.shares * s.nav)
 
             rows.append(
@@ -21,6 +22,7 @@ class ShareRepository:
                     s.fund_name,
                     s.shares,
                     s.nav,
+                    s.nav_source,
                     estimated_aum,
                     estimated_aum is not None,
                     s.source_meta.source,
@@ -33,13 +35,15 @@ class ShareRepository:
 
         sql = """
         INSERT INTO core.etf_share_daily (
-            security_id, trade_date, fund_name, shares, nav, estimated_aum, is_estimated_aum,
+            security_id, trade_date, fund_name, shares, nav, nav_source,
+            estimated_aum, is_estimated_aum,
             source, upstream_source, fetched_at, quality_status, ingestion_run_id
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT (security_id, trade_date) DO UPDATE SET
             fund_name = EXCLUDED.fund_name,
             shares = EXCLUDED.shares,
             nav = COALESCE(EXCLUDED.nav, core.etf_share_daily.nav),
+            nav_source = COALESCE(EXCLUDED.nav_source, core.etf_share_daily.nav_source),
             estimated_aum = COALESCE(EXCLUDED.estimated_aum, core.etf_share_daily.estimated_aum),
             is_estimated_aum = EXCLUDED.is_estimated_aum,
             source = EXCLUDED.source,

@@ -1,13 +1,6 @@
 import pandas as pd
 
 
-def normalize_premium_discount(close: float | None, iopv: float | None) -> float | None:
-    """Return a premium as a positive value and a discount as a negative value."""
-    if close is None or iopv is None or iopv <= 0:
-        return None
-    return (float(close) - float(iopv)) / float(iopv)
-
-
 def average_turnover_amount(turnover_amount: pd.Series, window: int) -> float | None:
     values = pd.to_numeric(turnover_amount, errors="coerce").tail(window)
     if len(values) < window or values.isna().any():

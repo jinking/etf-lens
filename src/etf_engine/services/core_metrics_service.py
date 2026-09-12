@@ -4,13 +4,11 @@ import pandas as pd
 
 from etf_engine.domain.core_metrics import CoreMetricsQuality, ETFCoreMetrics, TrackingIndex
 from etf_engine.domain.identifiers import SecurityId
+from etf_engine.ingestion.normalizer import normalize_premium_discount
 from etf_engine.repositories.core_metrics_repository import CoreMetricsRepository
 from etf_engine.research.exposure import calculate_top10_concentration
 from etf_engine.research.flow import calculate_flow, share_change_pct
-from etf_engine.research.liquidity import (
-    average_turnover_amount,
-    normalize_premium_discount,
-)
+from etf_engine.research.liquidity import average_turnover_amount
 from etf_engine.research.liquidity import bid_ask_spread as calculate_bid_ask_spread
 from etf_engine.research.performance import simple_return
 from etf_engine.research.risk import max_drawdown
@@ -21,9 +19,7 @@ class ETFCoreMetricsService:
     def __init__(self, repository: CoreMetricsRepository | None = None):
         self.repository = repository or CoreMetricsRepository()
 
-    def get_core_metrics(
-        self, security_id: str, asof_date: date | None = None
-    ) -> ETFCoreMetrics:
+    def get_core_metrics(self, security_id: str, asof_date: date | None = None) -> ETFCoreMetrics:
         canonical_id = SecurityId.parse(security_id).value
         quote_rows = self.repository.quote_history(canonical_id, asof_date)
         if not quote_rows:
@@ -49,9 +45,7 @@ class ETFCoreMetricsService:
         if avg_turnover is None:
             reasons["avg_turnover_amount_20d"] = "insufficient_history"
 
-        spread_value = calculate_bid_ask_spread(
-            latest_quote.get("bid1"), latest_quote.get("ask1")
-        )
+        spread_value = calculate_bid_ask_spread(latest_quote.get("bid1"), latest_quote.get("ask1"))
         if latest_quote.get("bid1") is None:
             reasons["bid1"] = "bid1_unavailable"
         if latest_quote.get("ask1") is None:

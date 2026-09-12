@@ -4,11 +4,12 @@ from etf_engine.config.settings import settings
 from etf_engine.ingestion.raw_store import RawSnapshotStore
 from etf_engine.ingestion.run_recorder import IngestionRunRecorder
 from etf_engine.repositories.master_repository import MasterRepository
-from etf_engine.sources.master import UnifiedETFMasterSource
+from etf_engine.repositories.quality_issue_repository import QualityIssueRepository
+from etf_engine.sources.registry import registry
 
 
 def sync_master() -> dict:
-    source = UnifiedETFMasterSource()
+    source = registry.master_source()
     repository = MasterRepository()
     raw_store = RawSnapshotStore(settings.raw_path)
     recorder = IngestionRunRecorder()
@@ -16,7 +17,7 @@ def sync_master() -> dict:
     run_id = recorder.start("etf_master", "unified_master", None)
 
     try:
-        masters = source.fetch_masters()
+        masters, issues = source.fetch_masters_with_issues()
         today = datetime.now().date()
 
         if masters:
@@ -31,9 +32,10 @@ def sync_master() -> dict:
             m.source_meta.ingestion_run_id = run_id
 
         written = repository.upsert_many(masters)
+        issues_written = QualityIssueRepository().record(dataset="etf_master", issues=issues)
         recorder.finish(
             run_id,
-            status="SUCCESS",
+            status="SUCCESS" if not issues else "PARTIAL",
             rows_fetched=len(masters),
             rows_written=written,
             rows_rejected=0,
@@ -44,6 +46,7 @@ def sync_master() -> dict:
             "rows_fetched": len(masters),
             "rows_written": written,
             "rows_rejected": 0,
+            "quality_issues": issues_written,
         }
     except Exception as exc:
         recorder.finish(

@@ -1,11 +1,10 @@
-from datetime import date, datetime, timedelta
+from datetime import datetime
 
-from etf_engine.config.settings import settings
-from etf_engine.db.connection import connect
 from etf_engine.domain.identifiers import SecurityId
 from etf_engine.ingestion.run_recorder import IngestionRunRecorder
+from etf_engine.jobs.sync_calendar import ensure_market_calendar
 from etf_engine.repositories.quote_repository import QuoteRepository
-from etf_engine.sources.akshare.history import AkshareETFHistorySource
+from etf_engine.sources.registry import registry
 
 
 def backfill_history(
@@ -18,8 +17,9 @@ def backfill_history(
     如果未指定 security_ids，则默认选取本地最新成交额最高的 top_n 只 ETF。
     """
     repository = QuoteRepository()
-    source = AkshareETFHistorySource()
+    source = registry.history_source()
     recorder = IngestionRunRecorder()
+    calendar = ensure_market_calendar()
 
     # 确定目标 ETF 列表
     targets: list[str] = []
@@ -31,29 +31,15 @@ def backfill_history(
                 continue
     else:
         # 从本地最新行情中按成交额排序挑选
-        limit = top_n or 20
-        with connect(settings.database_path) as con:
-            rows = con.execute(
-                """
-                SELECT security_id
-                FROM (
-                    SELECT security_id, turnover_amount,
-                           ROW_NUMBER() OVER (PARTITION BY security_id ORDER BY trade_date DESC) as rn
-                    FROM core.etf_quote_daily
-                )
-                WHERE rn = 1
-                ORDER BY turnover_amount DESC NULLS LAST
-                LIMIT ?
-                """,
-                [limit],
-            ).fetchall()
-            targets = [r[0] for r in rows]
+        targets = repository.top_by_turnover(top_n or 20)
 
     if not targets:
         return {"status": "SKIPPED", "reason": "No target ETFs found"}
 
-    end_date = datetime.now().date()
-    start_date = end_date - timedelta(days=days)
+    # 历史区间按交易日推进，而不是自然日：days 天自然日会被周末和假期稀释。
+    end_date = calendar.latest_closed_trading_day(datetime.now().astimezone())
+    window = calendar.trading_days_back(end_date, days)
+    start_date = window[-1] if window else end_date
     run_id = recorder.start("etf_history", "akshare_history", None)
 
     total_fetched = 0

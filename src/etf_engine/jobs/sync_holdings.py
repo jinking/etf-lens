@@ -1,13 +1,12 @@
-from datetime import datetime
-
-from etf_engine.config.settings import settings
-from etf_engine.db.connection import connect
 from etf_engine.domain.identifiers import SecurityId
+from etf_engine.domain.quality import error, warn
 from etf_engine.ingestion.run_recorder import IngestionRunRecorder
 from etf_engine.repositories.holding_repository import HoldingRepository
+from etf_engine.repositories.quality_issue_repository import QualityIssueRepository
+from etf_engine.repositories.quote_repository import QuoteRepository
 from etf_engine.repositories.tag_repository import TagRepository
 from etf_engine.services.tagging_service import TaggingService
-from etf_engine.sources.akshare.holdings import AkshareETFHoldingSource
+from etf_engine.sources.registry import registry
 
 
 def sync_holdings(
@@ -15,9 +14,10 @@ def sync_holdings(
     top_n: int | None = 20,
 ) -> dict:
     """拉取 ETF 披露前十大持仓，并自动完成行业穿透打标写入 core.etf_tag。"""
-    source = AkshareETFHoldingSource()
+    source = registry.holding_source()
     holding_repo = HoldingRepository()
     tag_repo = TagRepository()
+    quality_repo = QualityIssueRepository()
     tagging_service = TaggingService()
     recorder = IngestionRunRecorder()
 
@@ -29,23 +29,7 @@ def sync_holdings(
             except ValueError:
                 continue
     else:
-        limit = top_n or 20
-        with connect(settings.database_path) as con:
-            rows = con.execute(
-                """
-                SELECT security_id
-                FROM (
-                    SELECT security_id, turnover_amount,
-                           ROW_NUMBER() OVER (PARTITION BY security_id ORDER BY trade_date DESC) as rn
-                    FROM core.etf_quote_daily
-                )
-                WHERE rn = 1
-                ORDER BY turnover_amount DESC NULLS LAST
-                LIMIT ?
-                """,
-                [limit],
-            ).fetchall()
-            targets = [r[0] for r in rows]
+        targets = QuoteRepository().top_by_turnover(top_n or 20)
 
     if not targets:
         return {"status": "SKIPPED", "reason": "No target ETFs found"}
@@ -53,12 +37,24 @@ def sync_holdings(
     run_id = recorder.start("etf_holdings_and_tags", "holding_penetration", None)
     total_holdings = 0
     total_tags = 0
+    total_issues = 0
     errors: list[str] = []
 
     for sid in targets:
         try:
-            holdings = source.fetch_holdings(sid)
+            holdings, parse_issues = source.fetch_holdings_with_issues(sid)
+            total_issues += quality_repo.record(
+                dataset="etf_holding",
+                issues=parse_issues,
+                security_id=None if holdings else sid,
+                trade_date=holdings[0].report_date if holdings else None,
+            )
             if not holdings:
+                total_issues += quality_repo.record(
+                    dataset="etf_holding",
+                    issues=[warn("holding_disclosure_unavailable", f"{sid} 未取得披露持仓")],
+                    security_id=sid,
+                )
                 continue
 
             for h in holdings:
@@ -76,12 +72,19 @@ def sync_holdings(
                 }
                 for h in holdings
             ]
-            tags = tagging_service.calculate_industry_tags(sid, holdings_dict, asof_date=holdings[0].report_date)
+            tags = tagging_service.calculate_industry_tags(
+                sid, holdings_dict, asof_date=holdings[0].report_date
+            )
             written_t = tag_repo.upsert_tags(tags)
             total_tags += written_t
 
         except Exception as exc:
             errors.append(f"{sid}: {exc}")
+            total_issues += quality_repo.record(
+                dataset="etf_holding",
+                issues=[error("holding_fetch_failed", f"{sid}: {exc}")],
+                security_id=sid,
+            )
 
     status = "SUCCESS" if not errors else ("PARTIAL" if total_holdings > 0 else "FAILED")
     recorder.finish(
@@ -98,5 +101,6 @@ def sync_holdings(
         "targets_count": len(targets),
         "holdings_written": total_holdings,
         "tags_written": total_tags,
+        "quality_issues": total_issues,
         "errors": errors,
     }

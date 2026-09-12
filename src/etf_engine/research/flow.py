@@ -33,9 +33,7 @@ def share_change_pct(series: pd.Series, periods: int) -> float | None:
     return float(values.iloc[-1] / values.iloc[0] - 1.0)
 
 
-def _estimated_subscription(
-    shares: pd.Series, nav: pd.Series | None, periods: int
-) -> float | None:
+def _estimated_subscription(shares: pd.Series, nav: pd.Series | None, periods: int) -> float | None:
     if nav is None:
         return None
     share_values = pd.to_numeric(shares, errors="coerce").tail(periods + 1)

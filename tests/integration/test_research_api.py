@@ -106,7 +106,9 @@ def test_compare_and_screen_api_and_cli(tmp_path, monkeypatch):
     assert compute_resp.json()["data"]["target_count"] == 2
 
     # 2. Compare API 测试
-    compare_resp = client.get("/api/v1/research/compare", params={"security_ids": "588200.SH,159915.SZ"})
+    compare_resp = client.get(
+        "/api/v1/research/compare", params={"security_ids": "588200.SH,159915.SZ"}
+    )
     assert compare_resp.status_code == 200
     comp_data = compare_resp.json()["data"]
     assert len(comp_data) == 2

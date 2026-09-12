@@ -55,6 +55,9 @@ class ETFShare(BaseModel):
     fund_name: str | None = None
     shares: Decimal
     nav: Decimal | None = None
+    #: nav 的独立来源。份额接口（SSE 规模接口）不提供净值时，净值可能来自
+    #: 另一个数据源，必须单独记录，避免把跨源拼接结果伪装成单一来源事实。
+    nav_source: str | None = None
     source_meta: SourceMeta
 
 
@@ -111,4 +114,3 @@ class IndexConstituent(BaseModel):
     stock_name: str | None = None
     weight_pct: Decimal | None = None
     source_meta: SourceMeta
-

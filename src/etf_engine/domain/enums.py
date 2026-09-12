@@ -4,6 +4,8 @@ from enum import StrEnum
 class Exchange(StrEnum):
     SSE = "SSE"
     SZSE = "SZSE"
+    BJSE = "BJSE"
+    HKEX = "HKEX"
 
 
 class AssetType(StrEnum):

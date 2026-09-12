@@ -1,5 +1,3 @@
-from datetime import date
-
 from etf_engine.config.settings import settings
 from etf_engine.db.connection import connect
 
@@ -40,7 +38,10 @@ class TagRepository:
     def get_tags(self, etf_id: str) -> list[dict]:
         with connect(settings.database_path) as con:
             rows = con.execute(
-                "SELECT tag, tag_type, confidence FROM core.etf_tag WHERE etf_id = ? ORDER BY confidence DESC",
+                """
+                SELECT tag, tag_type, confidence FROM core.etf_tag
+                WHERE etf_id = ? ORDER BY confidence DESC
+                """,
                 [etf_id],
             ).fetchall()
             cols = [c[0] for c in con.description]

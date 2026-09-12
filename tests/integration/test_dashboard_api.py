@@ -38,6 +38,7 @@ def test_dashboard_returns_an_honest_empty_state(tmp_path, monkeypatch):
         "etf_count": 0,
         "latest_trade_date": None,
         "total_turnover_amount": None,
+        "stale_etf_count": 0,
     }
 
 

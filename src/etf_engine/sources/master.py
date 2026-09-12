@@ -1,6 +1,5 @@
 import io
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import datetime
 
 import akshare as ak
 import pandas as pd
@@ -9,7 +8,13 @@ import requests
 from etf_engine.domain.enums import QualityStatus
 from etf_engine.domain.identifiers import SecurityId
 from etf_engine.domain.models import ETFMaster, SourceMeta
+from etf_engine.domain.quality import DataQualityIssue, error
 from etf_engine.sources.base import ETFMasterSource
+
+
+def _text(row, column: str) -> str | None:
+    value = row.get(column)
+    return None if pd.isna(value) else str(value)
 
 
 class UnifiedETFMasterSource(ETFMasterSource):
@@ -35,7 +40,9 @@ class UnifiedETFMasterSource(ETFMasterSource):
             }
             resp = requests.get(url, params=params, headers=headers, timeout=15)
             if resp.status_code == 200:
-                df = pd.read_excel(io.BytesIO(resp.content), engine="openpyxl", dtype={"基金代码": str})
+                df = pd.read_excel(
+                    io.BytesIO(resp.content), engine="openpyxl", dtype={"基金代码": str}
+                )
                 for _, row in df.iterrows():
                     code = str(row.get("基金代码", "")).strip().zfill(6)
                     if not code:
@@ -48,18 +55,24 @@ class UnifiedETFMasterSource(ETFMasterSource):
                         except Exception:
                             listed_date = None
                     details[sid] = {
-                        "short_name": None if pd.isna(row.get("基金简称")) else str(row.get("基金简称")),
-                        "fund_type": None if pd.isna(row.get("基金类别")) else str(row.get("基金类别")),
-                        "investment_type": None if pd.isna(row.get("投资类别")) else str(row.get("投资类别")),
-                        "manager_name": None if pd.isna(row.get("基金管理人")) else str(row.get("基金管理人")),
-                        "custodian_name": None if pd.isna(row.get("基金托管人")) else str(row.get("基金托管人")),
+                        "short_name": _text(row, "基金简称"),
+                        "fund_type": _text(row, "基金类别"),
+                        "investment_type": _text(row, "投资类别"),
+                        "manager_name": _text(row, "基金管理人"),
+                        "custodian_name": _text(row, "基金托管人"),
                         "listed_date": listed_date,
                     }
-        except Exception:
-            pass
+        except Exception as exc:
+            # 不静默：调用方会把这条记录写进 ops.quality_issue。
+            self._issues.append(error("master_szse_details_failed", str(exc)))
         return details
 
     def fetch_masters(self) -> list[ETFMaster]:
+        masters, _ = self.fetch_masters_with_issues()
+        return masters
+
+    def fetch_masters_with_issues(self) -> tuple[list[ETFMaster], list[DataQualityIssue]]:
+        self._issues: list[DataQualityIssue] = []
         fetched_at = datetime.now().astimezone()
         szse_details = self._fetch_szse_details()
 
@@ -98,8 +111,8 @@ class UnifiedETFMasterSource(ETFMasterSource):
                         quality_status=QualityStatus.PASS,
                     ),
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            self._issues.append(error("master_ths_list_failed", str(exc)))
 
         for sid, detail in szse_details.items():
             if sid not in all_records:
@@ -124,4 +137,6 @@ class UnifiedETFMasterSource(ETFMasterSource):
                     ),
                 )
 
-        return list(all_records.values())
+        if not all_records:
+            self._issues.append(error("master_empty_result", "全市场 ETF 档案为空"))
+        return list(all_records.values()), self._issues

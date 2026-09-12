@@ -4,10 +4,13 @@ from decimal import Decimal, InvalidOperation
 import akshare as ak
 import pandas as pd
 
-from etf_engine.domain.enums import QualityStatus
+from etf_engine.domain.enums import Exchange, QualityStatus
 from etf_engine.domain.identifiers import SecurityId
 from etf_engine.domain.models import ETFQuote, SourceMeta
 from etf_engine.sources.base import ETFHistorySource
+
+#: 新浪历史行情接口使用的小写市场前缀。
+_SINA_PREFIX = {Exchange.SSE: "sh", Exchange.SZSE: "sz"}
 
 
 def _decimal(value):
@@ -21,7 +24,9 @@ def _decimal(value):
 
 class AkshareETFHistorySource(ETFHistorySource):
     def _fetch_from_sina(self, sid: SecurityId, start_date: date, end_date: date) -> list[ETFQuote]:
-        prefix = "sh" if sid.exchange.value == "SSE" else "sz"
+        prefix = _SINA_PREFIX.get(sid.exchange)
+        if prefix is None:
+            raise ValueError(f"新浪历史行情接口不支持 {sid.exchange.value}")
         symbol = f"{prefix}{sid.ticker}"
         df = ak.fund_etf_hist_sina(symbol=symbol)
         fetched_at = datetime.now().astimezone()
@@ -98,4 +103,3 @@ class AkshareETFHistorySource(ETFHistorySource):
         except Exception:
             # 当东财接口被代理拦截或断开连接时，平滑回退至新浪接口
             return self._fetch_from_sina(sid, start_date, end_date)
-

@@ -3,13 +3,10 @@ from datetime import date
 import pandas as pd
 import pytest
 
+from etf_engine.ingestion.normalizer import normalize_premium_discount
 from etf_engine.research.exposure import calculate_top10_concentration
 from etf_engine.research.flow import calculate_flow
-from etf_engine.research.liquidity import (
-    average_turnover_amount,
-    bid_ask_spread,
-    normalize_premium_discount,
-)
+from etf_engine.research.liquidity import average_turnover_amount, bid_ask_spread
 from etf_engine.research.performance import simple_return
 from etf_engine.research.risk import max_drawdown
 from etf_engine.research.tracking import tracking_error

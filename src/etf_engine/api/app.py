@@ -5,11 +5,12 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from etf_engine.jobs.compute_mart import compute_mart
+from etf_engine.jobs.sync_calendar import sync_calendar
 from etf_engine.jobs.sync_holdings import sync_holdings
 from etf_engine.jobs.sync_master import sync_master
+from etf_engine.jobs.sync_nav import sync_nav
 from etf_engine.jobs.sync_quotes import sync_quotes
 from etf_engine.jobs.sync_shares import sync_shares
-
 from etf_engine.services.core_metrics_service import ETFCoreMetricsService
 from etf_engine.services.etf_service import ETFService
 from etf_engine.services.research_service import ResearchService
@@ -23,7 +24,6 @@ service = ETFService()
 core_metrics_service = ETFCoreMetricsService()
 research_service = ResearchService()
 WEB_ROOT = Path(__file__).resolve().parents[1] / "web"
-
 
 
 @app.get("/health")
@@ -77,13 +77,30 @@ def sync_latest_master():
 
 
 @app.post("/api/v1/sync/shares")
-def sync_latest_shares(trade_date: date | None = None):
+def sync_latest_shares(trade_date: date | None = None, backfill_days: int = 1):
     try:
-        result = sync_shares(trade_date=trade_date)
+        result = sync_shares(trade_date=trade_date, backfill_days=backfill_days)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"份额同步失败：{exc}") from exc
     return {"data": result, "meta": {}, "errors": []}
 
+
+@app.post("/api/v1/sync/calendar")
+def sync_trading_calendar():
+    try:
+        result = sync_calendar()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"交易日历同步失败：{exc}") from exc
+    return {"data": result, "meta": {}, "errors": []}
+
+
+@app.post("/api/v1/sync/nav")
+def sync_latest_nav(trade_date: date | None = None):
+    try:
+        result = sync_nav(trade_date=trade_date)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"净值同步失败：{exc}") from exc
+    return {"data": result, "meta": {}, "errors": []}
 
 
 @app.get("/api/v1/etfs/{security_id}")
@@ -170,5 +187,3 @@ def screen_etfs(
         limit=limit,
     )
     return {"data": data, "meta": {"count": len(data)}, "errors": []}
-
-

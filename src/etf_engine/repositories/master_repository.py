@@ -58,21 +58,37 @@ class MasterRepository:
             fund_name = COALESCE(EXCLUDED.fund_name, core.etf_master.fund_name),
             short_name = COALESCE(EXCLUDED.short_name, core.etf_master.short_name),
             fund_type = COALESCE(EXCLUDED.fund_type, core.etf_master.fund_type),
-            investment_type = COALESCE(EXCLUDED.investment_type, core.etf_master.investment_type),
+            investment_type = COALESCE(
+                EXCLUDED.investment_type, core.etf_master.investment_type
+            ),
             manager_name = COALESCE(EXCLUDED.manager_name, core.etf_master.manager_name),
             custodian_name = COALESCE(EXCLUDED.custodian_name, core.etf_master.custodian_name),
-            established_date = COALESCE(EXCLUDED.established_date, core.etf_master.established_date),
+            established_date = COALESCE(
+                EXCLUDED.established_date, core.etf_master.established_date
+            ),
             listed_date = COALESCE(EXCLUDED.listed_date, core.etf_master.listed_date),
-            tracking_index_id = COALESCE(EXCLUDED.tracking_index_id, core.etf_master.tracking_index_id),
-            tracking_index_name = COALESCE(EXCLUDED.tracking_index_name, core.etf_master.tracking_index_name),
+            tracking_index_id = COALESCE(
+                EXCLUDED.tracking_index_id, core.etf_master.tracking_index_id
+            ),
+            tracking_index_name = COALESCE(
+                EXCLUDED.tracking_index_name, core.etf_master.tracking_index_name
+            ),
             reported_aum = COALESCE(EXCLUDED.reported_aum, core.etf_master.reported_aum),
-            reported_aum_date = COALESCE(EXCLUDED.reported_aum_date, core.etf_master.reported_aum_date),
+            reported_aum_date = COALESCE(
+                EXCLUDED.reported_aum_date, core.etf_master.reported_aum_date
+            ),
             asset_region = COALESCE(EXCLUDED.asset_region, core.etf_master.asset_region),
             base_currency = COALESCE(EXCLUDED.base_currency, core.etf_master.base_currency),
-            tracking_index_currency = COALESCE(EXCLUDED.tracking_index_currency, core.etf_master.tracking_index_currency),
+            tracking_index_currency = COALESCE(
+                EXCLUDED.tracking_index_currency, core.etf_master.tracking_index_currency
+            ),
             is_cross_border = EXCLUDED.is_cross_border,
-            management_fee_pct = COALESCE(EXCLUDED.management_fee_pct, core.etf_master.management_fee_pct),
-            custodian_fee_pct = COALESCE(EXCLUDED.custodian_fee_pct, core.etf_master.custodian_fee_pct),
+            management_fee_pct = COALESCE(
+                EXCLUDED.management_fee_pct, core.etf_master.management_fee_pct
+            ),
+            custodian_fee_pct = COALESCE(
+                EXCLUDED.custodian_fee_pct, core.etf_master.custodian_fee_pct
+            ),
             status = EXCLUDED.status,
             source = EXCLUDED.source,
             source_updated_at = EXCLUDED.source_updated_at,
@@ -95,4 +111,4 @@ class MasterRepository:
 
     def count(self) -> int:
         with connect(settings.database_path) as con:
-            return con.execute("SELECT count(*) FROM core.etf_master").fetchone()[0]
+            return int(con.execute("SELECT count(*) FROM core.etf_master").fetchone()[0])

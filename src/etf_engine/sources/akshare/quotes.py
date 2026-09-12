@@ -30,6 +30,9 @@ class AkshareETFQuoteSource(ETFQuoteSource):
         df = ak.fund_etf_spot_em()
         fetched_at = datetime.now().astimezone()
         result: list[ETFQuote] = []
+        # 上游当前只提供 买一/卖一，没有 买一量/卖一量；缺失即 NULL，不猜。
+        has_bid_volume = "买一量" in df.columns
+        has_ask_volume = "卖一量" in df.columns
 
         for _, row in df.iterrows():
             ticker = str(row["代码"]).zfill(6)
@@ -38,7 +41,11 @@ class AkshareETFQuoteSource(ETFQuoteSource):
             row_date = trade_date
             if row_date is None and "数据日期" in row and not pd.isna(row["数据日期"]):
                 row_date = pd.Timestamp(row["数据日期"]).date()
-            row_date = row_date or fetched_at.date()
+            if row_date is None:
+                # 拿不到上游日期时不许用本地运行日顶替：运行日可能是周末。
+                raise ValueError(
+                    "ETF spot snapshot carries no 数据日期; pass trade_date explicitly."
+                )
 
             result.append(
                 ETFQuote(
@@ -68,8 +75,8 @@ class AkshareETFQuoteSource(ETFQuoteSource):
                     ),
                     bid1=_decimal(row.get("买一")),
                     ask1=_decimal(row.get("卖一")),
-                    bid1_volume=_decimal(row.get("买一量")),
-                    ask1_volume=_decimal(row.get("卖一量")),
+                    bid1_volume=_decimal(row.get("买一量")) if has_bid_volume else None,
+                    ask1_volume=_decimal(row.get("卖一量")) if has_ask_volume else None,
                     trading_flow_main=_decimal(row.get("主力净流入-净额")),
                     trading_flow_super_large=_decimal(row.get("超大单净流入-净额")),
                     trading_flow_large=_decimal(row.get("大单净流入-净额")),

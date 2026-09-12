@@ -2,6 +2,13 @@ from etf_engine.config.settings import settings
 from etf_engine.db.connection import connect
 from etf_engine.domain.models import ETFQuote
 
+#: 行情来源（如新浪历史回补）不提供名称时，回落到 master 的简称/全称。
+_DISPLAY_NAME = (
+    "COALESCE(q.name, "
+    "(SELECT COALESCE(m.short_name, m.fund_name) FROM core.etf_master m "
+    "WHERE m.security_id = q.security_id))"
+)
+
 
 class QuoteRepository:
     def upsert_many(self, quotes: list[ETFQuote]) -> int:
@@ -56,35 +63,57 @@ class QuoteRepository:
             upstream_source, fetched_at, quality_status, ingestion_run_id
         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT (security_id, trade_date) DO UPDATE SET
-            name = EXCLUDED.name,
+            -- OHLCV 是同一天的事实，后写入的来源可以覆盖（历史回补会修正快照）。
             open = EXCLUDED.open,
             high = EXCLUDED.high,
             low = EXCLUDED.low,
             close = EXCLUDED.close,
-            prev_close = EXCLUDED.prev_close,
-            change = EXCLUDED.change,
-            change_pct = EXCLUDED.change_pct,
             volume = EXCLUDED.volume,
             turnover_amount = EXCLUDED.turnover_amount,
-            turnover_rate = EXCLUDED.turnover_rate,
-            amplitude = EXCLUDED.amplitude,
-            iopv = EXCLUDED.iopv,
-            premium_discount_pct = EXCLUDED.premium_discount_pct,
-            premium_discount_pct_normalized = EXCLUDED.premium_discount_pct_normalized,
-            bid1 = EXCLUDED.bid1,
-            ask1 = EXCLUDED.ask1,
-            bid1_volume = EXCLUDED.bid1_volume,
-            ask1_volume = EXCLUDED.ask1_volume,
-            trading_flow_main = EXCLUDED.trading_flow_main,
-            trading_flow_super_large = EXCLUDED.trading_flow_super_large,
-            trading_flow_large = EXCLUDED.trading_flow_large,
-            trading_flow_medium = EXCLUDED.trading_flow_medium,
-            trading_flow_small = EXCLUDED.trading_flow_small,
-            source = EXCLUDED.source,
-            upstream_source = EXCLUDED.upstream_source,
+            -- 其余字段按来源能力互补：历史回补没有 iopv/买卖盘/资金流，
+            -- 不能把快照已经拿到的值覆盖成 NULL（未知 ≠ 没有）。
+            name = COALESCE(EXCLUDED.name, core.etf_quote_daily.name),
+            prev_close = COALESCE(EXCLUDED.prev_close, core.etf_quote_daily.prev_close),
+            change = COALESCE(EXCLUDED.change, core.etf_quote_daily.change),
+            change_pct = COALESCE(EXCLUDED.change_pct, core.etf_quote_daily.change_pct),
+            turnover_rate = COALESCE(EXCLUDED.turnover_rate, core.etf_quote_daily.turnover_rate),
+            amplitude = COALESCE(EXCLUDED.amplitude, core.etf_quote_daily.amplitude),
+            iopv = COALESCE(EXCLUDED.iopv, core.etf_quote_daily.iopv),
+            premium_discount_pct = COALESCE(
+                EXCLUDED.premium_discount_pct, core.etf_quote_daily.premium_discount_pct
+            ),
+            premium_discount_pct_normalized = COALESCE(
+                EXCLUDED.premium_discount_pct_normalized,
+                core.etf_quote_daily.premium_discount_pct_normalized
+            ),
+            bid1 = COALESCE(EXCLUDED.bid1, core.etf_quote_daily.bid1),
+            ask1 = COALESCE(EXCLUDED.ask1, core.etf_quote_daily.ask1),
+            bid1_volume = COALESCE(EXCLUDED.bid1_volume, core.etf_quote_daily.bid1_volume),
+            ask1_volume = COALESCE(EXCLUDED.ask1_volume, core.etf_quote_daily.ask1_volume),
+            trading_flow_main = COALESCE(
+                EXCLUDED.trading_flow_main, core.etf_quote_daily.trading_flow_main
+            ),
+            trading_flow_super_large = COALESCE(
+                EXCLUDED.trading_flow_super_large, core.etf_quote_daily.trading_flow_super_large
+            ),
+            trading_flow_large = COALESCE(
+                EXCLUDED.trading_flow_large, core.etf_quote_daily.trading_flow_large
+            ),
+            trading_flow_medium = COALESCE(
+                EXCLUDED.trading_flow_medium, core.etf_quote_daily.trading_flow_medium
+            ),
+            trading_flow_small = COALESCE(
+                EXCLUDED.trading_flow_small, core.etf_quote_daily.trading_flow_small
+            ),
+            source = COALESCE(EXCLUDED.source, core.etf_quote_daily.source),
+            upstream_source = COALESCE(
+                EXCLUDED.upstream_source, core.etf_quote_daily.upstream_source
+            ),
             fetched_at = EXCLUDED.fetched_at,
             quality_status = EXCLUDED.quality_status,
-            ingestion_run_id = EXCLUDED.ingestion_run_id
+            ingestion_run_id = COALESCE(
+                EXCLUDED.ingestion_run_id, core.etf_quote_daily.ingestion_run_id
+            )
         """
 
         with connect(settings.database_path) as con:
@@ -95,10 +124,16 @@ class QuoteRepository:
         with connect(settings.database_path) as con:
             row = con.execute(
                 """
-                SELECT *
-                FROM core.etf_quote_daily
-                WHERE security_id = ?
-                ORDER BY trade_date DESC
+                SELECT q.* REPLACE (
+                    COALESCE(
+                        q.name,
+                        (SELECT COALESCE(m.short_name, m.fund_name)
+                         FROM core.etf_master m WHERE m.security_id = q.security_id)
+                    ) AS name
+                )
+                FROM core.etf_quote_daily q
+                WHERE q.security_id = ?
+                ORDER BY q.trade_date DESC
                 LIMIT 1
                 """,
                 [security_id],
@@ -109,11 +144,15 @@ class QuoteRepository:
             return dict(zip(columns, row, strict=True))
 
     def search_latest(self, query: str | None = None, limit: int = 20) -> list[dict]:
-        """Return the latest locally stored quote for each matching ETF."""
+        """Return the latest locally stored quote for each matching ETF.
+
+        ``name`` 以上游行情中的名称为准，缺失时回落到 ``core.etf_master``：
+        历史回补来源（新浪）不提供名称，直接展示会让前端出现"未命名 ETF"。
+        """
         filters = "WHERE row_number = 1"
         values: list[str | int] = []
         if query:
-            filters += " AND (security_id ILIKE ? OR name ILIKE ?)"
+            filters += f" AND (q.security_id ILIKE ? OR {_DISPLAY_NAME} ILIKE ?)"
             pattern = f"%{query}%"
             values.extend([pattern, pattern])
         values.append(limit)
@@ -121,13 +160,15 @@ class QuoteRepository:
         with connect(settings.database_path) as con:
             rows = con.execute(
                 f"""
-                SELECT * EXCLUDE (row_number)
+                SELECT q.* EXCLUDE (row_number) REPLACE (
+                    {_DISPLAY_NAME} AS name
+                )
                 FROM (
                     SELECT *, ROW_NUMBER() OVER (
                         PARTITION BY security_id ORDER BY trade_date DESC
                     ) AS row_number
                     FROM core.etf_quote_daily
-                )
+                ) q
                 {filters}
                 ORDER BY turnover_amount DESC NULLS LAST, security_id
                 LIMIT ?
@@ -138,29 +179,56 @@ class QuoteRepository:
             return [dict(zip(columns, row, strict=True)) for row in rows]
 
     def dashboard_summary(self) -> dict:
-        """Return truthful dashboard metadata derived only from local quotes."""
+        """Return truthful dashboard metadata derived only from local quotes.
+
+        统计口径只覆盖最新交易日：历史实现把 2026-08-13 的快照和 2026-09-11
+        的历史行加在一起算"全市场成交额"，同时把 asof_date 标成 09-11。
+        """
         with connect(settings.database_path) as con:
             row = con.execute(
                 """
                 WITH latest_quotes AS (
-                    SELECT * EXCLUDE (row_number)
-                    FROM (
-                        SELECT *, ROW_NUMBER() OVER (
-                            PARTITION BY security_id ORDER BY trade_date DESC
-                        ) AS row_number
-                        FROM core.etf_quote_daily
-                    )
-                    WHERE row_number = 1
+                    SELECT security_id, trade_date, turnover_amount,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY security_id ORDER BY trade_date DESC
+                           ) AS row_number,
+                           MAX(trade_date) OVER () AS asof_date
+                    FROM core.etf_quote_daily
                 )
                 SELECT
-                    COUNT(*) AS etf_count,
+                    COUNT(*) FILTER (WHERE trade_date = asof_date) AS etf_count,
                     MAX(trade_date) AS latest_trade_date,
-                    SUM(turnover_amount) AS total_turnover_amount
+                    SUM(turnover_amount) FILTER (WHERE trade_date = asof_date)
+                        AS total_turnover_amount,
+                    COUNT(*) FILTER (WHERE trade_date < asof_date) AS stale_etf_count
                 FROM latest_quotes
+                WHERE row_number = 1
                 """
             ).fetchone()
         return {
             "etf_count": row[0],
             "latest_trade_date": row[1],
             "total_turnover_amount": row[2],
+            "stale_etf_count": row[3],
         }
+
+    def top_by_turnover(self, limit: int) -> list[str]:
+        """按最近一个交易日的成交额挑选关注列表（回补历史/抓取持仓共用）。"""
+        with connect(settings.database_path) as con:
+            rows = con.execute(
+                """
+                SELECT security_id
+                FROM (
+                    SELECT security_id, turnover_amount,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY security_id ORDER BY trade_date DESC
+                           ) AS row_number
+                    FROM core.etf_quote_daily
+                )
+                WHERE row_number = 1
+                ORDER BY turnover_amount DESC NULLS LAST
+                LIMIT ?
+                """,
+                [limit],
+            ).fetchall()
+        return [row[0] for row in rows]
