@@ -52,6 +52,67 @@ _COMPARE_COLUMNS = """
 
 
 class ResearchRepository:
+    def themes(self, limit: int = 50, min_etf_count: int = 1) -> list[dict]:
+        """按标签聚合主题：每个主题下有多少 ETF、合计规模、平均表现。"""
+        with connect(settings.database_path) as con:
+            rows = con.execute(
+                """
+                WITH latest_shares AS (
+                    SELECT * EXCLUDE (rn)
+                    FROM (
+                        SELECT *,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY security_id ORDER BY trade_date DESC
+                               ) AS rn
+                        FROM core.etf_share_daily
+                    )
+                    WHERE rn = 1
+                ),
+                latest_metrics AS (
+                    SELECT * EXCLUDE (rn)
+                    FROM (
+                        SELECT *,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY security_id ORDER BY trade_date DESC
+                               ) AS rn
+                        FROM mart.etf_metric_daily
+                    )
+                    WHERE rn = 1
+                ),
+                latest_flows AS (
+                    SELECT * EXCLUDE (rn)
+                    FROM (
+                        SELECT *,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY security_id ORDER BY trade_date DESC
+                               ) AS rn
+                        FROM mart.etf_flow_daily
+                    )
+                    WHERE rn = 1
+                )
+                SELECT
+                    t.tag AS theme,
+                    t.tag_type,
+                    COUNT(DISTINCT t.etf_id) AS etf_count,
+                    SUM(s.estimated_aum) AS total_estimated_aum,
+                    AVG(m.return_20d) AS avg_return_20d,
+                    AVG(f.share_change_pct_20d) AS avg_share_change_pct_20d,
+                    MAX(t.coverage) AS max_coverage,
+                    MAX(t.calculation_version) AS calculation_version
+                FROM core.etf_tag t
+                LEFT JOIN latest_shares s ON s.security_id = t.etf_id
+                LEFT JOIN latest_metrics m ON m.security_id = t.etf_id
+                LEFT JOIN latest_flows f ON f.security_id = t.etf_id
+                GROUP BY 1, 2
+                HAVING COUNT(DISTINCT t.etf_id) >= ?
+                ORDER BY total_estimated_aum DESC NULLS LAST, etf_count DESC
+                LIMIT ?
+                """,
+                [min_etf_count, limit],
+            ).fetchall()
+            columns = [c[0] for c in con.description]
+            return [dict(zip(columns, row, strict=True)) for row in rows]
+
     def compare(self, security_ids: list[str]) -> list[dict]:
         if not security_ids:
             return []

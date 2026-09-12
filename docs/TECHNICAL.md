@@ -203,6 +203,24 @@ MCP 不直接开放 SQL。
 
 全部调用同一 Application Service 层。
 
+现状：8 个工具已在 `src/etf_engine/mcp/tools.py` 实现并可单测，transport 在
+`src/etf_engine/mcp/server.py`（FastMCP，可选依赖 `.[agent]`），`etf mcp` 启动。
+
+## 13. 单标的回补任务
+
+有两类数据没有"全市场一次拉完"的接口，必须逐只标的请求，因此单独做成
+有界、限速、可续跑、带退避重试的任务，不放进日常同步链路：
+
+```text
+etf backfill-nav      --days 60 --limit 50     # 逐只基金净值历史
+etf sync-index-map    --limit 50               # 逐只 ETF 跟踪标的
+etf sync-industry                              # 逐只个股行业分类（默认只取已持有个股）
+etf sync-shares --backfill-days 40             # 逐交易日回补上交所份额
+```
+
+共同约定：单点失败只影响该标的（记入 `ops.quality_issue` 与 `ops.source_health`），
+接口抖动由 `ingestion/retry.py` 做指数退避；失败不会写出半成品数据。
+
 ## 12. 测试
 
 - Unit

@@ -108,17 +108,28 @@ curl http://127.0.0.1:8000/health
 etf doctor
 etf db-init
 etf sync-calendar        # 同步交易日历（其余任务的前置）
+etf sync-master          # ETF 主数据
 etf sync-quotes
 etf sync-nav             # ETF 单位净值
 etf sync-shares
 etf sync-shares --backfill-days 40   # 仅上交所支持按交易日回补
+etf backfill-nav --days 60 --limit 50 # 逐只基金回补净值历史（解锁 5/20 日申赎估算）
+etf sync-holdings        # 披露持仓 + 行业穿透标签
+etf sync-industry        # 个股行业分类（cninfo，A 股口径）
+etf sync-index-catalog   # 指数目录
+etf sync-index-map --limit 50        # ETF→跟踪指数（按基金披露的跟踪标的）
+etf sync-index-details   # 指数成分 + 指数行情
 etf compute-mart         # 计算收益/波动/回撤/流动性/份额变化
 etf show 588200.SH
 etf metrics 588200.SH
 etf screen --tag 半导体 --min-aum 2000000000
+etf themes               # 主题聚合（行业/风格）
+etf mcp                  # 以 stdio 启动 MCP server（需 .[agent]）
 ```
 
 > `sync-*` 命令需要网络和对应上游接口可用。
+> 逐只标的的任务（`backfill-nav` / `sync-index-map` / `sync-industry` / `sync-holdings`）
+> 都支持 `--limit`/`--top-n` 分次推进，单点失败只影响该标的并记入 `ops.quality_issue`。
 
 ## 数据口径约束
 
@@ -127,6 +138,9 @@ etf screen --tag 半导体 --min-aum 2000000000
 - 估算值带 `is_estimated` 与 `calculation_version`；
 - 跨源拼接（如"深交所份额 + 东方财富净值"）单独记录 `nav_source`；
 - 解析/校验失败的行写入 `ops.quality_issue`，不静默丢弃。
+- 行业分类来自 `core.stock_industry`（带分类标准），不在代码里维护映射字典；
+  标签带 `coverage`，覆盖率不足时不输出"宽基/均衡"风格判断；
+- ETF→指数映射来自基金披露的跟踪标的，与指数目录精确对齐，对不上不写映射。
 
 ## 数据目录
 

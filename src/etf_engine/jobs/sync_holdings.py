@@ -14,7 +14,10 @@ def sync_holdings(
     security_ids: list[str] | None = None,
     top_n: int | None = 20,
 ) -> dict:
-    """拉取 ETF 披露前十大持仓，并自动完成行业穿透打标写入 core.etf_tag。"""
+    """拉取 ETF 披露前十大持仓，并自动完成行业穿透打标写入 core.etf_tag。
+
+    ``top_n <= 0`` 表示覆盖本地有行情的全部 ETF（逐只请求，耗时长，建议显式使用）。
+    """
     source = registry.holding_source()
     holding_repo = HoldingRepository()
     tag_repo = TagRepository()
@@ -30,7 +33,12 @@ def sync_holdings(
             except ValueError:
                 continue
     else:
-        targets = QuoteRepository().top_by_turnover(top_n or 20)
+        quote_repository = QuoteRepository()
+        targets = (
+            quote_repository.all_security_ids()
+            if top_n is not None and top_n <= 0
+            else quote_repository.top_by_turnover(top_n or 20)
+        )
 
     if not targets:
         return {"status": "SKIPPED", "reason": "No target ETFs found"}

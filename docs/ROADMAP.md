@@ -57,11 +57,12 @@ estimated_net_subscription
 
 ## Phase 3 — 指数与持仓
 
-- [ ] ETF → Index
-- [ ] Index Constituents
-- [ ] Index Weight
-- [ ] Holdings Disclosure
-- [ ] Concentration
+- [x] ETF → Index（基金披露的跟踪标的 → 指数目录精确对齐）
+- [x] Index Constituents（中证成分权重）
+- [x] Index Weight（成分权重）
+- [x] Holdings Disclosure（默认前 20 只，可 `--top-n 0` 覆盖全市场）
+- [x] Concentration（Top10 集中度）
+- [x] 指数行情（新浪指数日线，仅覆盖新浪在列指数）
 
 ## Phase 4 — Research
 
@@ -75,17 +76,18 @@ estimated_net_subscription
 
 ## Phase 5 — Application
 
-- [ ] `etf show`
-- [ ] `etf compare`
-- [ ] `etf screen`
-- [ ] `/api/v1`
-- [ ] MCP Tools
+- [x] `etf show`
+- [x] `etf compare`
+- [x] `etf screen`
+- [x] `etf themes`（主题聚合）
+- [x] `/api/v1`
+- [x] MCP Tools（8 个工具 + FastMCP transport，SDK 为可选依赖）
 
 ## Phase 6 — Production Hardening
 
-- [ ] Retry / Backoff（`tenacity` 已在依赖里但未使用；回补已按单日容错）
-- [ ] Source Health（`ops.source_health` 仍是空表）
-- [ ] Reconciliation（`reconcile_numeric` 仍是死代码）
+- [x] Retry / Backoff（`ingestion/retry.py`，逐标的任务使用指数退避）
+- [x] Source Health（`ops.source_health` 记录最近成败与连续失败次数）
+- [x] Reconciliation（`reconcile_numeric` 用于同日不同来源的收盘价对账，冲突不覆盖）
 - [x] Backups（`data/backups/`，本次基线已备份）
 - [ ] Scheduler templates
 - [ ] Live Smoke Tests
@@ -93,13 +95,17 @@ estimated_net_subscription
 
 ## 已知缺口（按优先级）
 
-1. **净值历史回补**：`estimated_net_subscription_5d/20d` 依赖净值历史，
-   目前只能逐日积累；如需即时可用，需要按基金逐个拉取 `fund_etf_fund_info_em`。
-2. **深交所份额历史**：上游只有当前快照，无法回补，只能从现在开始积累。
-3. **ETF → 指数 / 指数成分 / 跟踪误差**：`core.etf_index_map`、
-   `core.index_constituent`、`core.index_quote_daily` 仍为空，对应 Adapter 未实现。
-4. **持仓覆盖**：当前只覆盖按成交额排序的前 N 只 ETF（默认 20），
-   `core.etf_holding_disclosure.disclosure_date` 为 NULL（上游不提供）。
-5. **行业标签**：`services/tagging_service.py` 里的行业映射是硬编码知识，
-   既没有 `calculation_version` 也不是数据源事实，后续应迁到独立 Adapter。
-6. **沪市档案字段**：管理人/上市日期只有深交所官方来源，沪市 ETF 该部分仍为 NULL。
+1. **深交所份额历史**：上游只有当前快照（`SHOWTYPE=xlsx` 的基金列表接口不接受日期
+   参数，实测传 `txtQueryDate`/`STAT_DATE` 都一样返回当日快照），无法回补，
+   只能从现在开始逐日积累。
+2. **指数行情覆盖**：新浪只收录 562 条指数，中证自编主题指数（如 931160）没有行情符号；
+   东方财富的指数行情接口在本机网络被拒（`RemoteDisconnected`），因此这些指数
+   `core.index_quote_daily` 为空，跟踪误差不可用，已记 `index_quote_source_missing`。
+3. **上证自编指数缺目录**：`上证科创板芯片指数` 等既不在中证清单也不在新浪列表，
+   目录无法给出代码 → 不写 `etf_index_map`，只保留披露的指数名称。
+4. **债/商品/海外指数**：中债系列、黄金 AU99.99、恒生/纳斯达克等不在 A 股指数口径内，
+   一律记为未匹配，不用近似指数顶替。
+5. **沪市档案字段**：管理人/上市日期只有深交所官方来源，沪市 ETF 该部分仍为 NULL。
+6. **持仓披露日**：`core.etf_holding_disclosure.disclosure_date` 上游不提供，保持 NULL。
+7. **`tracking_error_60d`**：需要"指数行情 + 净值"同时具备 40 个对齐交易日；
+   指数行情已有 90 个交易日，净值需通过 `etf backfill-nav` 补齐后才会产出。

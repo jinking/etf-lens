@@ -17,6 +17,7 @@ from etf_engine.jobs.sync_master import sync_master
 from etf_engine.jobs.sync_nav import sync_nav
 from etf_engine.jobs.sync_quotes import sync_quotes
 from etf_engine.jobs.sync_shares import sync_shares
+from etf_engine.mcp.server import run_stdio
 from etf_engine.repositories.trading_calendar_repository import TradingCalendarRepository
 from etf_engine.services.core_metrics_service import ETFCoreMetricsService
 from etf_engine.services.etf_service import ETFService
@@ -53,6 +54,16 @@ def db_init():
 def sync_calendar_cmd():
     result = sync_calendar()
     typer.echo(result)
+
+
+@app.command("mcp")
+def mcp():
+    """以 stdio transport 启动 MCP server（需要 pip install -e ".[agent]"）。"""
+    try:
+        run_stdio()
+    except RuntimeError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
 
 
 @app.command("sync-master")
@@ -238,6 +249,26 @@ def screen_cmd(
             f"规模: {aum_str} | "
             f"20D均量: {r['avg_turnover_amount_20d'] or 0:>12,.0f} | "
             f"20D收益: {ret_str:>7} {tags_str}"
+        )
+
+
+@app.command("themes")
+def themes_cmd(
+    limit: int = typer.Option(20, "--limit", "-l", help="返回数量限制"),
+    min_etf_count: int = typer.Option(1, "--min-etf", help="主题下最少 ETF 数量"),
+):
+    """按标签聚合主题（行业 / 风格）。"""
+    results = ResearchService().themes(limit=limit, min_etf_count=min_etf_count)
+    if not results:
+        typer.echo("本地还没有主题标签。先执行 `etf sync-holdings` 与 `etf sync-industry`。")
+        return
+    for item in results:
+        aum = item.get("total_estimated_aum")
+        aum_str = f"{aum / 1e8:,.1f}亿" if aum is not None else "—"
+        typer.echo(
+            f"{item['theme']:<14} [{item['tag_type']:<8}] "
+            f"ETF数: {item['etf_count']:>3} | 合计规模: {aum_str:>12} | "
+            f"20D均收益: {item.get('avg_return_20d') or 0:>7.2%}"
         )
 
 

@@ -233,6 +233,25 @@ class QuoteRepository:
             ).fetchall()
         return [row[0] for row in rows]
 
+    def all_security_ids(self) -> list[str]:
+        """本地有行情的全部 ETF（按成交额降序），用于全市场批处理。"""
+        with connect(settings.database_path) as con:
+            rows = con.execute(
+                """
+                SELECT security_id
+                FROM (
+                    SELECT security_id, turnover_amount,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY security_id ORDER BY trade_date DESC
+                           ) AS row_number
+                    FROM core.etf_quote_daily
+                )
+                WHERE row_number = 1
+                ORDER BY turnover_amount DESC NULLS LAST, security_id
+                """
+            ).fetchall()
+        return [row[0] for row in rows]
+
     def day_closes(
         self, security_ids: list[str], start_date, end_date
     ) -> dict[tuple[str, object], tuple[float | None, str | None]]:

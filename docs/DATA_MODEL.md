@@ -159,6 +159,39 @@ valid_to
 source
 ```
 
+约定：`valid_from` 是"系统观测到该跟踪关系"的日期，不是指数生效日。
+跟踪关系来自基金概况页披露的"跟踪标的"字段（缺失时退回"业绩比较基准"），
+与指数目录做精确名称对齐；对齐不到时不写映射，只把披露的名称写进
+`core.etf_master.tracking_index_name`。
+
+## core.index_catalog
+
+```text
+index_id PK
+index_name
+market_symbol     # 指数行情接口需要的符号，如 sh000300
+source
+fetched_at
+```
+
+目录 = 中证指数全量清单 ∪ 新浪指数列表：深证系列与上证自编指数不在中证清单里，
+但它们的行情是可得事实，因此并入目录。
+
+## core.stock_industry
+
+```text
+stock_id PK
+stock_name
+industry_name
+industry_code
+classification_standard   # 如"中证行业分类标准"
+source
+fetched_at
+```
+
+行业不是唯一事实：同一只股票在不同分类标准下行业不同，因此标准单独成列，不做合并。
+cninfo 是 A 股口径，港股等非 A 股标的记为"来源不适用"。
+
 ## core.index_constituent
 
 ```text
@@ -178,9 +211,11 @@ etf_id
 tag
 tag_type
 confidence
+coverage              # 分类覆盖率：能归类到行业的持仓权重占比
 source
 valid_from
 valid_to
+calculation_version   # 口径版本，当前 tag_v1
 ```
 
 ## mart.etf_metric_daily

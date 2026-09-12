@@ -138,3 +138,18 @@ class MartRepository:
                 return None
             columns = [c[0] for c in con.description]
             return dict(zip(columns, row, strict=True))
+
+    def get_latest_flow(self, security_id: str) -> dict | None:
+        with connect(settings.database_path) as con:
+            row = con.execute(
+                """
+                SELECT * FROM mart.etf_flow_daily
+                WHERE security_id = ?
+                ORDER BY trade_date DESC LIMIT 1
+                """,
+                [security_id],
+            ).fetchone()
+            if not row:
+                return None
+            columns = [c[0] for c in con.description]
+            return dict(zip(columns, row, strict=True))

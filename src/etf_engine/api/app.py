@@ -4,9 +4,12 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from etf_engine.jobs.backfill_nav import backfill_nav
 from etf_engine.jobs.compute_mart import compute_mart
 from etf_engine.jobs.sync_calendar import sync_calendar
 from etf_engine.jobs.sync_holdings import sync_holdings
+from etf_engine.jobs.sync_index import sync_index_catalog, sync_index_details, sync_index_map
+from etf_engine.jobs.sync_industry import sync_industry
 from etf_engine.jobs.sync_master import sync_master
 from etf_engine.jobs.sync_nav import sync_nav
 from etf_engine.jobs.sync_quotes import sync_quotes
@@ -165,6 +168,59 @@ def sync_latest_holdings(security_ids: list[str] | None = None, top_n: int = 20)
     return {"data": result, "meta": {}, "errors": []}
 
 
+@app.post("/api/v1/sync/industry")
+def sync_stock_industry(security_ids: list[str] | None = None):
+    """个股行业分类（逐只标的，默认只同步已被持仓覆盖的个股）。"""
+    try:
+        result = sync_industry(security_ids=security_ids)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"行业分类同步失败：{exc}") from exc
+    return {"data": result, "meta": {}, "errors": []}
+
+
+@app.post("/api/v1/sync/index/catalog")
+def sync_indices_catalog():
+    try:
+        result = sync_index_catalog()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"指数目录同步失败：{exc}") from exc
+    return {"data": result, "meta": {}, "errors": []}
+
+
+@app.post("/api/v1/sync/index/map")
+def sync_etf_index_map(limit: int = 50):
+    try:
+        result = sync_index_map(limit=limit)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"跟踪指数映射失败：{exc}") from exc
+    return {"data": result, "meta": {}, "errors": []}
+
+
+@app.post("/api/v1/sync/index/details")
+def sync_indices_details(limit_indices: int | None = None, quote_trading_days: int = 90):
+    try:
+        result = sync_index_details(
+            limit_indices=limit_indices, quote_trading_days=quote_trading_days
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"指数成分/行情同步失败：{exc}") from exc
+    return {"data": result, "meta": {}, "errors": []}
+
+
+@app.post("/api/v1/backfill/nav")
+def trigger_backfill_nav(
+    security_ids: list[str] | None = None,
+    days: int = 60,
+    limit: int | None = 50,
+):
+    """逐只基金回补净值历史（有界、限速、可续跑）。"""
+    try:
+        result = backfill_nav(security_ids=security_ids, days=days, limit=limit)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"净值历史回补失败：{exc}") from exc
+    return {"data": result, "meta": {}, "errors": []}
+
+
 @app.get("/api/v1/research/screen")
 def screen_etfs(
     query: str | None = None,
@@ -186,4 +242,13 @@ def screen_etfs(
         share_growth_only=share_growth_only,
         limit=limit,
     )
+    return {"data": data, "meta": {"count": len(data)}, "errors": []}
+
+
+@app.get("/api/v1/research/themes")
+def list_themes(
+    limit: int = Query(default=50, ge=1, le=200),
+    min_etf_count: int = Query(default=1, ge=1),
+):
+    data = research_service.themes(limit=limit, min_etf_count=min_etf_count)
     return {"data": data, "meta": {"count": len(data)}, "errors": []}

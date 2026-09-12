@@ -40,6 +40,10 @@ class ResearchService:
             limit=limit,
         )
 
+    def themes(self, limit: int = 50, min_etf_count: int = 1) -> list[dict]:
+        """按标签聚合主题（P2 主题聚合）。"""
+        return self.repository.themes(limit=limit, min_etf_count=min_etf_count)
+
     @staticmethod
     def _canonical_ids(security_ids: list[str]) -> list[str]:
         canonical_ids: list[str] = []
