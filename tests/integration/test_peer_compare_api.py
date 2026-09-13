@@ -117,6 +117,26 @@ def _prepare(tmp_path, monkeypatch) -> None:
             ),
         ]
     )
+    from etf_engine.repositories.index_repository import IndexRepository
+
+    IndexRepository().upsert_map(
+        [
+            {
+                "etf_id": security_id,
+                "index_id": spec["index"],
+                "index_name": "沪深300指数" if spec["index"] == "000300" else "芯片指数",
+                "valid_from": ASOF,
+                "source": "test",
+            }
+            for security_id, spec in UNIVERSE.items()
+        ]
+    )
+    with connect(settings.database_path) as con:
+        con.execute(
+            "UPDATE core.etf_master SET profile_observed_at = ?",
+            [datetime(2026, 9, 11, 0, 0)],
+        )
+
     compute_mart()
 
 
@@ -185,6 +205,7 @@ def test_name_only_etf_joins_the_same_group_as_its_index(tmp_path, monkeypatch):
         con.execute(
             "UPDATE core.etf_master SET tracking_index_id = NULL WHERE security_id = '510310.SH'"
         )
+        con.execute("UPDATE core.etf_index_map SET index_id = '' WHERE etf_id = '510310.SH'")
 
     compute_peer_metrics(asof=ASOF)
 

@@ -14,6 +14,7 @@ import pandas as pd
 from etf_engine.config.settings import settings
 from etf_engine.db.connection import connect
 from etf_engine.domain.enums import BenchmarkReturnBasis
+from etf_engine.domain.versions import current_flow_version
 from etf_engine.ingestion.run_recorder import IngestionRunRecorder
 from etf_engine.repositories.peer_repository import PeerRepository
 from etf_engine.research.benchmark import premium_stats
@@ -29,6 +30,7 @@ from etf_engine.research.tracking import classify_benchmark_basis, tracking_erro
 
 def _candidates(asof: date | None) -> list[dict]:
     """候选池：有行情、且能判定同类依据的 ETF。"""
+    flow_version = current_flow_version()
     with connect(settings.database_path) as con:
         rows = con.execute(
             """
@@ -53,18 +55,41 @@ def _candidates(asof: date | None) -> list[dict]:
                        ) AS rn
                 FROM mart.etf_flow_daily
                 WHERE (? IS NULL OR trade_date <= ?)
+                  AND calculation_version = ?
             ),
             primary_tag AS (
                 SELECT etf_id, MIN(tag) AS tag
                 FROM core.etf_tag
                 WHERE tag_type = 'industry'
+                  AND (? IS NULL OR valid_from IS NULL OR valid_from <= ?)
+                  AND (? IS NULL OR valid_to IS NULL OR valid_to > ?)
                 GROUP BY 1
+            ),
+            pit_index_map AS (
+                SELECT etf_id, index_id, index_name,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY etf_id ORDER BY valid_from DESC NULLS LAST
+                       ) AS rn
+                FROM core.etf_index_map
+                WHERE (? IS NULL OR valid_from IS NULL OR valid_from <= ?)
+                  AND (? IS NULL OR valid_to IS NULL OR valid_to > ?)
             )
             SELECT
                 m.security_id,
-                m.tracking_index_id,
-                m.tracking_index_name,
-                m.management_fee_pct,
+                CASE
+                    WHEN ? IS NOT NULL THEN im.index_id
+                    ELSE COALESCE(im.index_id, m.tracking_index_id)
+                END AS tracking_index_id,
+                CASE
+                    WHEN ? IS NOT NULL THEN im.index_name
+                    ELSE COALESCE(im.index_name, m.tracking_index_name)
+                END AS tracking_index_name,
+                CASE
+                    WHEN m.profile_observed_at IS NULL THEN NULL
+                    WHEN ? IS NULL OR m.profile_observed_at <= CAST(? AS TIMESTAMP)
+                        THEN m.management_fee_pct
+                    ELSE NULL
+                END AS management_fee_pct,
                 t.tag AS primary_tag,
                 q.trade_date AS quote_asof_date,
                 s.estimated_aum,
@@ -74,8 +99,29 @@ def _candidates(asof: date | None) -> list[dict]:
             LEFT JOIN latest_share s ON s.security_id = m.security_id AND s.rn = 1
             LEFT JOIN latest_flow f ON f.security_id = m.security_id AND f.rn = 1
             LEFT JOIN primary_tag t ON t.etf_id = m.security_id
+            LEFT JOIN pit_index_map im ON im.etf_id = m.security_id AND im.rn = 1
             """,
-            [asof, asof, asof, asof, asof, asof],
+            [
+                asof,
+                asof,
+                asof,
+                asof,
+                asof,
+                asof,
+                flow_version,
+                asof,
+                asof,
+                asof,
+                asof,
+                asof,
+                asof,
+                asof,
+                asof,
+                asof,
+                asof,
+                asof,
+                asof,
+            ],
         ).fetchall()
         columns = [c[0] for c in con.description]
     return [dict(zip(columns, row, strict=True)) for row in rows]
