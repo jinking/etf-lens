@@ -2,7 +2,7 @@
 
 研究查询必须能回答："这条结论用的是**哪一天**的数据？当时**是否已经知道**？"
 下表是各数据集的实际覆盖状态。`SAFE` = 有明确时间字段且查询按 as-of 过滤；
-`LIMITED` = 能做 as-of，但时间字段不能完全代表"市场已知"；`LATEST` = 只有当前值。
+`LIMITED` = 能做 as-of，但时间字段不能完全代表"市场已知"；`LATEST_ONLY` = 只有当前值。
 
 | 数据集 / 特征 | 时间字段 | PIT-safe | 当前行为 | 要求行为 | 缺失时回退 |
 | --- | --- | --- | --- | --- | --- |
@@ -13,12 +13,12 @@
 | Flow | `trade_date` + `calculation_version` | SAFE | 显式取 `flow_v2`，`<= asof` | 同左 | 同上 |
 | Adjusted Series | `trade_date` + `adjust_v1` | SAFE | 因子只累积 `<= t` 的行为 | 同左 | 该块 NULL |
 | Holdings | `report_date`（+`disclosure_date`） | **LIMITED** | `get_top10_asof`：`report_date <= asof` 且（有披露日时）`disclosure_date <= asof` | 同左；只有报告期时标记 `pit_confidence=limited` | `missing` |
-| ETF Tag | `valid_from` / `valid_to` | SAFE | 标签读取与按标签筛选都带有效期过滤 | 同左 | 该标签不可见 |
-| Tracking Index | `etf_index_map.valid_from/valid_to` | SAFE（有 map 时） | 映射优先；无映射回落 master 并标 `master_latest` | 同左 | `tracking_index_pit=master_latest` |
-| Fund Profile | `profile_observed_at` | **LIMITED** | `profile_observed_at <= asof` 才输出费率等字段 | 同左；NULL 时给 `profile_not_observed_asof` | 字段 NULL |
-| Peer Group | `mart.etf_peer_group_daily.asof_date` | SAFE | 取 `asof_date <= requested` 的最近快照 | 同左 | 无快照时回落当前分组并标 `current_fallback` |
+| ETF Tag | `valid_from` / `valid_to` | SAFE | 标签读取、按标签筛选与主题聚合都带有效期过滤 | 同左 | 该标签不可见 |
+| Tracking Index | `etf_index_map.valid_from/valid_to` | SAFE | 映射优先；历史模式下无 PIT 映射置 NULL，禁止回落 master；仅 Latest 模式允许回落 master 标 `master_latest` | 同左 | 历史模式：NULL (`tracking_index_pit=missing_asof`)；Latest 模式：`master_latest` |
+| Fund Profile | `profile_observed_at` | **LIMITED** | `profile_observed_at <= asof` 才输出费率与 AUM fallback | 同左；NULL 时给 `profile_not_observed_asof` | 字段 NULL |
+| Peer Group | `mart.etf_peer_group_daily.asof_date` | SAFE | 取 `asof_date <= requested` 的最近快照；历史模式下无日快照默认返回 `missing`，禁止自动回落当前分组 | 同左 | 历史模式：`peer_group_pit=missing`，字段 NULL；仅显式 `allow_current_fallback=True` 时标 `current_fallback` |
 | Peer Metrics | `mart.etf_peer_metric_daily.asof_date` | SAFE | `<= asof` 取最近一行 | 同左 | 分位 NULL |
-| Industry（个股行业） | 无（当前快照） | **LATEST** | 只存当前分类标准与结果 | 后续接入带日期的分类历史 | 未分类持仓计入 `__unclassified__` |
+| Industry（个股行业） | 无（当前快照） | **LATEST_ONLY** | 只存当前分类标准与结果 | 后续接入带日期的分类历史 | 未分类持仓计入 `__unclassified__` |
 | Corporate Actions | `action_date` | SAFE | 复权因子只累积 `<= 当日` 的行为 | 同左 | 不参与复权 + 记录问题 |
 | Index Constituents | `effective_date` | SAFE | `<= asof` 取最近一期 | 同左 | 空 |
 | Market Norm | `trade_date` | SAFE | `<= asof` | 同左 | 字段 NULL |

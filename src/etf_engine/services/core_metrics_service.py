@@ -78,7 +78,7 @@ class ETFCoreMetricsService:
                 reasons[metric_name] = "insufficient_history"
 
         master = self.repository.master(canonical_id)
-        tracking_index_row = self.repository.tracking_index(canonical_id, effective_asof)
+        tracking_index_row = self.repository.tracking_index(canonical_id, asof_date)
         tracking_index = TrackingIndex(
             id=tracking_index_row.get("index_id") if tracking_index_row else None,
             name=tracking_index_row.get("index_name") if tracking_index_row else None,

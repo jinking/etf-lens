@@ -116,24 +116,26 @@ class CoreMetricsRepository:
             )
             return rows[0] if rows else None
 
-    def tracking_index(self, security_id: str, asof_date: date) -> dict | None:
+    def tracking_index(self, security_id: str, asof_date: date | None = None) -> dict | None:
         with connect(settings.database_path) as con:
             rows = self._rows(
                 con,
                 """
                 SELECT index_id, index_name, source FROM core.etf_index_map
                 WHERE etf_id = ?
-                  AND (valid_from IS NULL OR valid_from <= ?)
-                  AND (valid_to IS NULL OR valid_to >= ?)
+                  AND (? IS NULL OR valid_from IS NULL OR valid_from <= ?)
+                  AND (? IS NULL OR valid_to IS NULL OR valid_to > ?)
                 ORDER BY valid_from DESC NULLS LAST
                 LIMIT 1
                 """,
-                [security_id, asof_date, asof_date],
+                [security_id, asof_date, asof_date, asof_date, asof_date],
             )
             if rows:
                 return rows[0]
-            # 跟踪关系的生效日未知，映射表里的 valid_from 只是"观测日"：当 as-of
-            # 早于观测日时，退回到最近一条已知映射，而不是直接跳到 master 副本。
+            # 历史 as-of 找不到有效映射时直接 None：禁止取未来最近一条 map，再 fallback master。
+            if asof_date is not None:
+                return None
+            # Latest mode 才允许回落
             rows = self._rows(
                 con,
                 """

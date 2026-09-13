@@ -172,7 +172,7 @@ def test_metrics_cli_returns_the_same_core_metrics_payload(tmp_path, monkeypatch
 
 
 def test_tracking_index_prefers_the_mapping_even_when_recorded_later(tmp_path, monkeypatch):
-    """映射的 valid_from 只是观测日；as-of 早于观测日时也应命中映射而非 master 副本。"""
+    """历史 as-of 早于观测日时不得泄漏未来映射；Latest 模式下优先命中映射而非 master。"""
     monkeypatch.setattr(settings, "database_path", tmp_path / "etf.duckdb")
     run_migrations()
     QuoteRepository().upsert_many(
@@ -197,7 +197,11 @@ def test_tracking_index_prefers_the_mapping_even_when_recorded_later(tmp_path, m
         ]
     )
 
-    metrics = ETFCoreMetricsService().get_core_metrics("510300.SH", date(2026, 9, 11))
+    # 历史模式：禁止使用未来观测的映射（V2.1.1 Phase 3）
+    metrics_hist = ETFCoreMetricsService().get_core_metrics("510300.SH", date(2026, 9, 11))
+    assert metrics_hist.tracking_index.id is None
 
-    assert metrics.tracking_index.id == "000300"
-    assert metrics.tracking_index.source == "fund_benchmark"
+    # Latest 模式：允许命中最近一条映射
+    metrics_latest = ETFCoreMetricsService().get_core_metrics("510300.SH", None)
+    assert metrics_latest.tracking_index.id == "000300"
+    assert metrics_latest.tracking_index.source == "fund_benchmark"

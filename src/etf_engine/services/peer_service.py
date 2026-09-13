@@ -36,18 +36,33 @@ class PeerService:
         self.holdings = holding_repository or HoldingRepository()
         self.industries = industry_repository or StockIndustryRepository()
 
-    def compare_peers(self, security_ids: list[str], asof_date: date | None = None) -> list[dict]:
+    def compare_peers(
+        self,
+        security_ids: list[str],
+        asof_date: date | None = None,
+        allow_current_fallback: bool = False,
+    ) -> list[dict]:
         """按五个研究维度给出同类分位（数据缺失的维度如实为 null）。"""
         rows: list[dict] = []
         for security_id in security_ids:
             canonical = _canonical(security_id)
             if canonical is None:
                 continue
-            # Point-in-Time：优先按日快照；没有快照才回落到"当前分组"并标注置信度。
+            # Point-in-Time：优先按日快照；历史模式下没有快照默认返回 missing，
+            # 只有显式允许时才回落到"当前分组"并标注 current_fallback。
             group = self.repository.group_of_asof(canonical, asof_date=asof_date)
-            group_pit = "asof_snapshot" if group else "current_fallback"
-            if group is None:
+            if group is not None:
+                group_pit = "asof_snapshot"
+            elif asof_date is None:
                 group = self.repository.group_of(canonical)
+                group_pit = "current" if group else "missing"
+            elif allow_current_fallback:
+                group = self.repository.group_of(canonical)
+                group_pit = "current_fallback" if group else "missing"
+            else:
+                group = None
+                group_pit = "missing"
+
             peers = self.repository.peers_of(canonical, asof_date=asof_date)
             rows.append(
                 {
@@ -55,7 +70,7 @@ class PeerService:
                     "peer_group_id": (peers or group or {}).get("peer_group_id"),
                     "peer_group_kind": (group or {}).get("peer_group_kind"),
                     "peer_count": (peers or group or {}).get("peer_count"),
-                    "peer_group_pit": group_pit if group else "missing",
+                    "peer_group_pit": group_pit,
                     "asof_date": (peers or {}).get("asof_date"),
                     "dimensions": {
                         "基础规模": {"aum_rank_pct": (peers or {}).get("aum_rank_pct")},

@@ -77,7 +77,7 @@ _COMPARE_SELECT = """
                     ORDER BY im.valid_from DESC NULLS LAST
                     LIMIT 1
                 ),
-                m.tracking_index_name
+                CASE WHEN ? IS NULL OR ? IS NULL THEN m.tracking_index_name ELSE NULL END
             ) AS tracking_index_name,
             CASE
                 WHEN EXISTS (
@@ -86,7 +86,8 @@ _COMPARE_SELECT = """
                       AND (? IS NULL OR im.valid_from IS NULL OR im.valid_from <= ?)
                       AND (? IS NULL OR im.valid_to IS NULL OR im.valid_to > ?)
                 ) THEN 'mapped_asof'
-                WHEN m.tracking_index_name IS NOT NULL THEN 'master_latest'
+                WHEN (? IS NULL) AND m.tracking_index_name IS NOT NULL THEN 'master_latest'
+                WHEN (? IS NOT NULL) THEN 'missing_asof'
                 ELSE NULL
             END AS tracking_index_pit,
             CASE
@@ -124,7 +125,15 @@ _SCREEN_SELECT = """
             q.change_pct,
             q.turnover_amount,
             met.avg_turnover_amount_20d,
-            COALESCE(s.estimated_aum, m.reported_aum) AS aum,
+            COALESCE(
+                s.estimated_aum,
+                CASE
+                    WHEN m.profile_observed_at IS NULL THEN NULL
+                    WHEN ? IS NULL OR m.profile_observed_at <= CAST(? AS TIMESTAMP)
+                        THEN m.reported_aum
+                    ELSE NULL
+                END
+            ) AS aum,
             met.return_20d,
             met.return_60d,
             met.max_drawdown_60d,
@@ -146,7 +155,7 @@ _SCREEN_SELECT = """
                     ORDER BY im.valid_from DESC NULLS LAST
                     LIMIT 1
                 ),
-                m.tracking_index_name
+                CASE WHEN ? IS NULL OR ? IS NULL THEN m.tracking_index_name ELSE NULL END
             ) AS tracking_index_name,
             CASE
                 WHEN EXISTS (
@@ -155,11 +164,12 @@ _SCREEN_SELECT = """
                       AND (? IS NULL OR im.valid_from IS NULL OR im.valid_from <= ?)
                       AND (? IS NULL OR im.valid_to IS NULL OR im.valid_to > ?)
                 ) THEN 'mapped_asof'
-                WHEN m.tracking_index_name IS NOT NULL THEN 'master_latest'
+                WHEN (? IS NULL) AND m.tracking_index_name IS NOT NULL THEN 'master_latest'
+                WHEN (? IS NOT NULL) THEN 'missing_asof'
                 ELSE NULL
             END AS tracking_index_pit,
             q.trade_date AS quote_asof_date,
-            s.trade_date AS share_asof_date,
+            COALESCE(s.trade_date, CAST(m.profile_observed_at AS DATE)) AS share_asof_date,
             met.trade_date AS metric_asof_date,
             f.trade_date AS flow_asof_date,
             met.calculation_version AS metric_calculation_version,
@@ -190,6 +200,7 @@ class ResearchRepository:
         params: list = _cte_params(context)
         params.extend(_cte_params(context, version=current_metric_version()))
         params.extend(_cte_params(context, version=current_flow_version()))
+        params.extend(_cte_params(context) * 2)
         params.extend([min_etf_count, limit])
 
         with connect(settings.database_path) as con:
@@ -212,6 +223,8 @@ class ResearchRepository:
                 LEFT JOIN latest_shares s ON s.security_id = t.etf_id
                 LEFT JOIN latest_metrics m ON m.security_id = t.etf_id
                 LEFT JOIN latest_flows f ON f.security_id = t.etf_id
+                WHERE (? IS NULL OR t.valid_from IS NULL OR t.valid_from <= ?)
+                  AND (? IS NULL OR t.valid_to IS NULL OR t.valid_to > ?)
                 GROUP BY 1, 2
                 HAVING COUNT(DISTINCT t.etf_id) >= ?
                 ORDER BY total_estimated_aum DESC NULLS LAST, etf_count DESC
@@ -248,8 +261,9 @@ class ResearchRepository:
         params.extend([*security_ids, *_cte_params(context)])  # share
         params.extend([*security_ids, *_cte_params(context, version=current_metric_version())])
         params.extend([*security_ids, *_cte_params(context, version=current_flow_version())])
-        # SELECT 子句里的 as-of 占位：跟踪指数映射(2) + PIT 标记(2) + 档案观测(2)
-        params.extend(_cte_params(context) * 5)
+        # SELECT 子句里的 as-of 占位：
+        # 跟踪指数映射(6) + PIT 标记(6) + 档案观测(2) = 14 个占位符 (7 对)
+        params.extend(_cte_params(context) * 7)
 
         sql = f"""
         WITH {ctes}
@@ -316,8 +330,8 @@ class ResearchRepository:
         params.extend(_cte_params(context))
         params.extend(_cte_params(context, version=current_metric_version()))
         params.extend(_cte_params(context, version=current_flow_version()))
-        # SELECT 子句：标签(4) + 跟踪指数名(2) + PIT 标记(2) = 8
-        params.extend(_cte_params(context) * 6)
+        # SELECT 子句：规模(2) + 标签(4) + 跟踪指数名(6) + PIT 标记(6) = 18 个占位符 (9 对)
+        params.extend(_cte_params(context) * 9)
         params.extend(values)
 
         sql = f"""
