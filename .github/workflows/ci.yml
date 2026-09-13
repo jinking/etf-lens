@@ -30,8 +30,10 @@ jobs:
       - name: Type check
         run: uv run mypy src
 
-      - name: Tests (unit + integration + regression)
-        run: uv run pytest -q
+      - name: Tests (unit + integration + regression, no network)
+        # 普通 CI 必须是确定性的：排除会真的打上游的 live 测试
+        # （它们由 live-smoke.yml 定时跑，失败不阻塞 PR）。
+        run: uv run pytest -q -m "not live"
 
       - name: Self audit (fixtures, no network)
         # 自检会在临时库上跑，验证每条数据规则"先违规、后干净"

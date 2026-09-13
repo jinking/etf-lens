@@ -45,7 +45,7 @@ packages = ["src/etf_engine"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-  "live: tests that call live upstream data sources",
+    "live: tests that call live upstream data sources",
 ]
 addopts = "-q"
 
