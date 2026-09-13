@@ -224,6 +224,50 @@ calculated_at
 口径 `adjust_v1`（后复权，Point-in-Time 安全）。原始 `core` 事实字段一律不改，
 复权值单独成表。详见 [`CORPORATE_ACTIONS.md`](CORPORATE_ACTIONS.md)。
 
+## core.etf_quote_snapshot
+
+```text
+security_id + snapshot_time   PK
+trade_date / last_price / bid1 / ask1 / bid1_volume / ask1_volume
+source / fetched_at / quality_status
+```
+
+盘中快照（与日线分开存）。日线是"收盘事实"，快照是"某一时刻的盘口"，
+两者不能互相覆盖。
+
+## core.index_valuation_daily / mart.index_valuation_daily
+
+```text
+core：index_id + trade_date PK，pe_static / pe_ttm / 中位数 / 等权 / metric_basis
+mart：index_id + trade_date + calculation_version PK，
+      pe_ttm_percentile_all_history / pe_ttm_percentile_10y / observations_*
+```
+
+指数估值事实与分位（看盘台的"位置"维度用）。分位是派生值，带口径版本。
+
+## mart.etf_peer_group
+
+```text
+security_id PK
+peer_group_id / peer_group_kind / peer_group_label / peer_count
+calculation_version / calculated_at
+```
+
+同类分组（确定性派生）：同一跟踪指数 → 同一基准名 → 同一主标签。禁止名称模糊匹配。
+
+## mart.etf_peer_metric_daily
+
+```text
+security_id + asof_date + calculation_version   PK
+peer_group_id / peer_count
+aum_rank_pct / turnover_rank_pct / tracking_error_rank_pct
+fee_rank_pct / premium_stability_rank_pct / flow_rank_pct
+```
+
+同类分位（`peer_v1`）：定义是"比我差的同类只数 ÷ (同类只数 − 1)"，
+费用与跟踪误差取反向口径，因此 **1.0 恒定代表同类最优**。
+只输出分位，不输出综合评分与买卖建议。详见 [`PEER_RESEARCH.md`](PEER_RESEARCH.md)。
+
 ## core.index_constituent
 
 ```text

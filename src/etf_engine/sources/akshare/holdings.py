@@ -24,11 +24,15 @@ from etf_engine.domain.enums import QualityStatus
 from etf_engine.domain.identifiers import SecurityId
 from etf_engine.domain.models import ETFHolding, SourceMeta
 from etf_engine.domain.quality import DataQualityIssue, warn
+from etf_engine.ingestion.contracts import FrameContract, check_frame
 from etf_engine.ingestion.retry import socket_timeout
 from etf_engine.sources.base import ETFHoldingSource
 
 #: 单只 ETF 保留的披露持仓条数。
 TOP_HOLDINGS = 10
+
+#: 东财持仓表的形状契约（列名就是接口契约本身）。
+HOLDINGS_CONTRACT = FrameContract("etf_holding", ("股票代码", "股票名称", "季度"))
 
 _QUARTER_PATTERN = re.compile(r"(\d{4})年(\d)季度")
 _QUARTER_END = {1: (3, 31), 2: (6, 30), 3: (9, 30), 4: (12, 31)}
@@ -172,4 +176,7 @@ class AkshareETFHoldingSource(ETFHoldingSource):
         frame = self._fetch_frame(sid.ticker, report_date or fetched_at.date())
         if frame is None:
             return HoldingParseResult([], [], None)
+        usable, issues = check_frame(frame, HOLDINGS_CONTRACT)
+        if not usable:
+            return HoldingParseResult([], issues, None)
         return parse_holdings_frame(frame, security_id=sid.value, fetched_at=fetched_at)

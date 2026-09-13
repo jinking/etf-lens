@@ -23,6 +23,7 @@ EXPECTED_RULES = {
     "unadjusted_flow_crosses_corporate_action": "ERROR",
     "adjusted_series_missing_version": "ERROR",
     "adjusted_series_future_action_leak": "ERROR",
+    "docs_consistency": "WARN",
 }
 
 

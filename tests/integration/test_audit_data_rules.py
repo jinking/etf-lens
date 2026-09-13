@@ -397,3 +397,12 @@ def test_flow_v1_across_a_split_is_only_flagged_without_a_v2_row(tmp_path, monke
         )
 
     assert _results()["unadjusted_flow_crosses_corporate_action"]["count"] == 0
+
+
+def test_docs_consistency_is_clean_on_the_real_repo(tmp_path, monkeypatch):
+    """文档漂移检查是结构化核对：命令存在、版本已登记、迁移表已写进数据模型。"""
+    _prepare(tmp_path, monkeypatch)
+
+    check = _results()["docs_consistency"]
+
+    assert check["count"] == 0, check["violations"]

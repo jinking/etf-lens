@@ -9,11 +9,15 @@ from etf_engine.domain.enums import QualityStatus
 from etf_engine.domain.identifiers import SecurityId
 from etf_engine.domain.models import ETFNav, SourceMeta
 from etf_engine.domain.quality import DataQualityIssue, warn
+from etf_engine.ingestion.contracts import FrameContract, check_frame
 from etf_engine.ingestion.retry import socket_timeout
 from etf_engine.sources.base import ETFNavHistorySource, ETFNavSource
 
 #: 东方财富净值接口用列名携带日期，形如 ``2026-09-11-单位净值``。
 _NAV_COLUMN = re.compile(r"^(\d{4}-\d{2}-\d{2})-(单位净值|累计净值)$")
+
+#: 场外/场内净值表的形状契约：日期列名是数据本身，无法写死，因此只要求代码列。
+NAV_DAILY_CONTRACT = FrameContract("etf_nav_daily", ("基金代码",))
 
 
 def _decimal(value) -> Decimal | None:
@@ -102,7 +106,11 @@ class AkshareETFNavSource(ETFNavSource):
         fetched_at = datetime.now().astimezone()
         with socket_timeout():
             frame = ak.fund_etf_fund_daily_em()
-        return parse_nav_frame(frame, fetched_at=fetched_at, trade_date=trade_date)
+        usable, issues = check_frame(frame, NAV_DAILY_CONTRACT)
+        if not usable:
+            return [], issues
+        navs, parse_issues = parse_nav_frame(frame, fetched_at=fetched_at, trade_date=trade_date)
+        return navs, [*issues, *parse_issues]
 
 
 def parse_nav_history_frame(

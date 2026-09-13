@@ -94,6 +94,12 @@ DATA_RULES = (
         "复权因子只能用截至当日（含）的公司行为推算：历史时点不得被未来才知道的"
         "公司行为改写（Point-in-Time 泄漏）",
     ),
+    DataRule(
+        "docs_consistency",
+        SEVERITY_WARN,
+        "文档与代码的结构化一致性：README/脚本里出现的 CLI 命令必须真实存在，"
+        "代码里出现的 calculation_version 必须已登记，迁移建的表要写进数据模型文档",
+    ),
 )
 
 
@@ -559,6 +565,81 @@ def _adjusted_future_leak_violations(con) -> list[dict]:
     return violations
 
 
+def _docs_consistency_violations(con) -> list[dict]:
+    """文档与代码的结构化一致性检查（不做自然语言理解，只查可核对的事实）。
+
+    1. README 与 scripts/*.sh 里出现的 ``etf <cmd>`` 必须真的注册过；
+    2. 代码里的 ``calculation_version`` 字面量必须在 ``domain/versions.py`` 登记；
+    3. 迁移文件建的表应当出现在 ``docs/DATA_MODEL.md``。
+    """
+    import re
+
+    root = Path(__file__).resolve().parents[3]
+    violations: list[dict] = []
+
+    cli_source = (root / "src" / "etf_engine" / "cli" / "app.py").read_text(encoding="utf-8")
+    registered_commands = set(re.findall(r'@app\.command\("([^"]+)"\)', cli_source))
+
+    docs_to_scan = [root / "README.md", *sorted((root / "scripts").glob("*.sh"))]
+    for path in docs_to_scan:
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8")
+        for command in sorted(set(re.findall(r"\betf ([a-z][a-z0-9-]{2,})", text))):
+            if command in {"api", "is"}:  # 自然语言里的 "etf is ..." 之类
+                continue
+            if command not in registered_commands:
+                violations.append(
+                    {
+                        "dataset": path.name,
+                        "detail": f"文档提到的 CLI 命令 `etf {command}` 不存在",
+                    }
+                )
+
+    version_literals = set(
+        re.findall(
+            r'"((?:metric|flow|tag|pulse|adjust|peer|benchmark|market_norm)[a-z0-9_]*_v\d+[a-z_]*)"',
+            _source_text(root),
+        )
+    )
+    for version in sorted(version_literals - REGISTERED_VERSIONS):
+        violations.append(
+            {
+                "dataset": "src/",
+                "detail": f"代码里出现的口径版本 {version} 未在 domain/versions.py 登记",
+            }
+        )
+
+    data_model = root / "docs" / "DATA_MODEL.md"
+    if data_model.exists():
+        documented = data_model.read_text(encoding="utf-8")
+        migrations = root / "src" / "etf_engine" / "db" / "migrations"
+        for migration in sorted(migrations.glob("*.sql")):
+            tables = set(
+                re.findall(
+                    r"CREATE TABLE IF NOT EXISTS\s+([a-z_]+\.[a-z_]+)",
+                    migration.read_text(encoding="utf-8"),
+                )
+            )
+            undocumented = sorted(table for table in tables if table not in documented)
+            if undocumented:
+                violations.append(
+                    {
+                        "dataset": migration.name,
+                        "detail": f"迁移建的表未写进 DATA_MODEL.md：{undocumented}",
+                    }
+                )
+    return violations[:10]
+
+
+def _source_text(root: Path) -> str:
+    """把 src 下的 Python 源码拼起来，供版本号扫描。"""
+    parts: list[str] = []
+    for path in sorted((root / "src").rglob("*.py")):
+        parts.append(path.read_text(encoding="utf-8"))
+    return "\n".join(parts)
+
+
 _IMPLEMENTATIONS = {
     "rows_on_non_trading_days": _non_trading_day_violations,
     "orphan_mart_rows": _orphan_mart_violations,
@@ -572,6 +653,7 @@ _IMPLEMENTATIONS = {
     "unadjusted_flow_crosses_corporate_action": _flow_crosses_action_violations,
     "adjusted_series_missing_version": _adjusted_version_violations,
     "adjusted_series_future_action_leak": _adjusted_future_leak_violations,
+    "docs_consistency": _docs_consistency_violations,
 }
 
 

@@ -184,5 +184,10 @@ Phase 3  Benchmark / Peer 相对研究           ✅ 完成
          etf peer-metrics / peer-compare / overlap、API 三端点、MCP 三个工具
          docs/PEER_RESEARCH.md
 Phase 4  Watchboard 方法学验证（walk-forward）⬜ 未开始
-Phase 5  工程可靠性（uv.lock / CI / 文档漂移自检）⬜ 未开始
+Phase 5  工程可靠性（uv.lock / CI / 文档漂移自检）✅ 完成
+         uv.lock（uv sync --all-extras --frozen 可复现）
+         .github/workflows/ci.yml（ruff/mypy/pytest/自检，不联网）
+         .github/workflows/live-smoke.yml（定时跑 -m live，不阻塞 PR）
+         ingestion/contracts.py（上游 shape 变化 → ops.quality_issue）
+         audit: docs_consistency（命令/版本/迁移表三向核对）
 ```

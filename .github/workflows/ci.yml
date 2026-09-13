@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+# 普通 CI 不联网：只跑确定性的静态检查、单测、集成测试与自检夹具。
+# 上游契约/在线冒烟在 live-smoke.yml 里，定时跑、不阻塞 PR。
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies (locked)
+        run: uv sync --all-extras --frozen
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check src tests
+
+      - name: Type check
+        run: uv run mypy src
+
+      - name: Tests (unit + integration + regression)
+        run: uv run pytest -q
+
+      - name: Self audit (fixtures, no network)
+        # 自检会在临时库上跑，验证每条数据规则"先违规、后干净"
+        run: uv run pytest -q tests/integration/test_audit_data_rules.py tests/unit/test_audit_architecture.py

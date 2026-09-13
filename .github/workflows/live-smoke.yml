@@ -1,0 +1,35 @@
+name: Live smoke
+
+on:
+  schedule:
+    # 每个交易日收盘后（UTC 10:30 = 北京 18:30），错开整点
+    - cron: "30 10 * * 1-5"
+  workflow_dispatch:
+
+# 只做一件事：把上游 shape 变化暴露出来。
+# 失败不阻塞任何 PR（它不是 required check），但会在 Actions 里留下红灯，
+# 并让每个适配器把问题写进 ops.quality_issue。
+jobs:
+  upstream-contracts:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync dependencies (locked)
+        run: uv sync --all-extras --frozen
+
+      - name: Upstream contract checks
+        run: uv run pytest -q -m live --maxfail=1
+
+      - name: Probe source health after the run
+        run: |
+          uv run etf audit --json > audit.json || true
+          uv run python - <<'PY'
+          import json, pathlib
+          report = json.loads(pathlib.Path("audit.json").read_text())
+          print("audit status:", report["status"], "errors:", report["error_count"])
+          PY
