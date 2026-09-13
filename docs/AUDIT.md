@@ -43,6 +43,13 @@ etf audit --samples 10
 | `missing_source_metadata` | ERROR | 事实行必须有 `source` 与 `fetched_at` |
 | `holdings_without_report_date` | ERROR | 持仓必须有披露报告期；**schema 守卫**：检查 `NOT NULL` 约束还在不在 |
 | `incomplete_market_turnover` | WARN | 沪深成交额应当成对出现，只落一边说明上游缺了一边 |
+| `future_data_in_research_snapshot` | ERROR | 研究派生行不得领先于它依赖的事实（mart 日期晚于对应 core 事实 = 用到了当时不存在的数据） |
+
+### 架构规则补充（V2 Phase 1）
+
+| 规则 | 内容 |
+| --- | --- |
+| `research_sql_must_be_asof_bounded` | 研究查询（`repositories/research_repository.py`）凡按 `trade_date` 取最新行，必须同时带 as-of 约束；否则查历史会读到未来数据 |
 
 ## 设计原则：每条规则都要能被触发
 

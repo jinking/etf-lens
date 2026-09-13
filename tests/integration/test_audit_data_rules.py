@@ -14,6 +14,7 @@ from etf_engine.repositories.trading_calendar_repository import TradingCalendarR
 
 FETCHED_AT = datetime(2026, 9, 12, 18, 0)
 TRADING_DAY = date(2026, 9, 10)  # 周四
+FUTURE_DAY = date(2026, 9, 11)  # 周五，行情事实还没有这一天
 SATURDAY = date(2026, 9, 12)
 
 
@@ -198,3 +199,53 @@ def test_single_exchange_turnover_is_warned(tmp_path, monkeypatch):
 
     assert check["count"] == 1
     assert check["severity"] == "WARN"
+
+
+def test_mart_rows_ahead_of_facts_are_flagged(tmp_path, monkeypatch):
+    """派生行领先于事实 = 用到了当时还不存在的数据（Point-in-Time 违规）。"""
+    _prepare(tmp_path, monkeypatch)
+    with connect(settings.database_path) as con:
+        con.execute(
+            """
+            INSERT INTO core.etf_quote_daily
+                (security_id, trade_date, close, source, fetched_at, quality_status)
+            VALUES ('588200.SH', ?, 1.0, 'test', ?, 'PASS')
+            """,
+            [TRADING_DAY, FETCHED_AT],
+        )
+        con.execute(
+            """
+            INSERT INTO mart.etf_metric_daily
+                (security_id, trade_date, return_1d, calculation_version, calculated_at)
+            VALUES ('588200.SH', ?, 0.1, 'metric_v1', ?)
+            """,
+            [FUTURE_DAY, FETCHED_AT],
+        )
+
+    check = _results()["future_data_in_research_snapshot"]
+
+    assert check["count"] == 1
+    assert "core.etf_quote_daily 只到" in check["violations"][0]["detail"]
+
+
+def test_mart_rows_within_fact_range_are_clean(tmp_path, monkeypatch):
+    _prepare(tmp_path, monkeypatch)
+    with connect(settings.database_path) as con:
+        con.execute(
+            """
+            INSERT INTO core.etf_quote_daily
+                (security_id, trade_date, close, source, fetched_at, quality_status)
+            VALUES ('588200.SH', ?, 1.0, 'test', ?, 'PASS')
+            """,
+            [TRADING_DAY, FETCHED_AT],
+        )
+        con.execute(
+            """
+            INSERT INTO mart.etf_metric_daily
+                (security_id, trade_date, return_1d, calculation_version, calculated_at)
+            VALUES ('588200.SH', ?, 0.1, 'metric_v1', ?)
+            """,
+            [TRADING_DAY, FETCHED_AT],
+        )
+
+    assert _results()["future_data_in_research_snapshot"]["count"] == 0

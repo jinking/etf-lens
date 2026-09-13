@@ -249,6 +249,15 @@ MCP 不直接开放 SQL。
 现状：8 个工具已在 `src/etf_engine/mcp/tools.py` 实现并可单测，transport 在
 `src/etf_engine/mcp/server.py`（FastMCP，可选依赖 `.[agent]`），`etf mcp` 启动。
 
+## 11.1 Point-in-Time 研究上下文（V2 Phase 1）
+
+研究查询（Compare / Screener / Themes）一律接受 as-of 上下文，只使用
+``trade_date <= asof_date`` 的数据，并逐块返回真实 as-of 与滞后天数；
+超期/缺失/口径不符的块置空并说明原因。
+
+实现与契约见 [`docs/POINT_IN_TIME.md`](POINT_IN_TIME.md)，规则由 `etf audit` 的
+`research_sql_must_be_asof_bounded` 与 `future_data_in_research_snapshot` 守护。
+
 ## 13. 单标的回补任务
 
 有两类数据没有"全市场一次拉完"的接口，必须逐只标的请求，因此单独做成

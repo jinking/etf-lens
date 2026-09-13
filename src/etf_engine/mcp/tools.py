@@ -15,6 +15,7 @@ from datetime import date
 from typing import Any
 
 from etf_engine.domain.identifiers import SecurityId
+from etf_engine.domain.research_context import ResearchContext
 from etf_engine.repositories.holding_repository import HoldingRepository
 from etf_engine.repositories.mart_repository import MartRepository
 from etf_engine.repositories.master_repository import MasterRepository
@@ -81,12 +82,23 @@ def get_etf_holdings(security_id: str) -> dict:
     }
 
 
-def compare_etfs(security_ids: list[str]) -> list[dict]:
-    """同一 as-of 口径下对比多只 ETF。"""
-    return ResearchService().compare(security_ids)
+def compare_etfs(
+    security_ids: list[str],
+    asof_date: date | None = None,
+    max_staleness_days: int | None = None,
+) -> list[dict]:
+    """同一 as-of 口径下对比多只 ETF。
+
+    ``asof_date`` 为 Point-in-Time 截止日：只使用当天（含）之前的数据，
+    并对每个数据块返回其真实 as-of 与滞后天数。
+    """
+    context = ResearchContext(asof_date=asof_date, max_staleness_days=max_staleness_days)
+    return ResearchService().compare(security_ids, context)
 
 
 def screen_etfs(
+    asof_date: date | None = None,
+    max_staleness_days: int | None = None,
     query: str | None = None,
     tag: str | None = None,
     min_aum: float | None = None,
@@ -98,6 +110,7 @@ def screen_etfs(
 ) -> list[dict]:
     """按条件筛选 ETF（数据库筛选，不是大模型遍历）。"""
     return ResearchService().screen(
+        context=ResearchContext(asof_date=asof_date, max_staleness_days=max_staleness_days),
         query=query,
         tag=tag,
         min_aum=min_aum,

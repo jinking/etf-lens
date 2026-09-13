@@ -64,6 +64,11 @@ ARCHITECTURE_RULES = (
         "capability_interfaces_present",
         "AGENTS.md 列出的 Source 能力接口必须存在（按能力拆，不按网站堆类）",
     ),
+    ArchitectureRule(
+        "research_sql_must_be_asof_bounded",
+        "研究查询不得无界取最新行：凡按 trade_date 取最新行的函数，"
+        "必须同时带 as-of 约束（V2 Point-in-Time）",
+    ),
 )
 
 
@@ -111,11 +116,7 @@ def check_architecture(package_root: Path) -> list[ArchitectureViolation]:
     base_path = package_root / "sources" / "base.py"
     if base_path.exists():
         tree = ast.parse(base_path.read_text(encoding="utf-8"), filename=str(base_path))
-        interfaces_found = {
-            node.name
-            for node in tree.body
-            if isinstance(node, ast.ClassDef)
-        }
+        interfaces_found = {node.name for node in tree.body if isinstance(node, ast.ClassDef)}
 
     for path in _iter_modules(package_root):
         relative = path.relative_to(package_root)
@@ -161,4 +162,62 @@ def check_architecture(package_root: Path) -> list[ArchitectureViolation]:
             )
         )
 
+    violations.extend(_research_asof_violations(package_root))
+    return violations
+
+
+#: 判定"取最新一行"的 SQL 特征。
+_LATEST_ROW_MARKERS = ("ROW_NUMBER() OVER", "ORDER BY trade_date DESC")
+
+#: 只要出现其中之一，就认为该查询已经受 as-of 约束。
+_ASOF_MARKERS = ("IS NULL OR", "<= ?")
+
+#: 只对研究查询面强制 as-of。债券/看板这类"当前状态"查询是另一回事：
+#: 它们展示的是"现在"，而不是"某个历史时点的研究结论"，要纳入时先改这里并同步文档。
+_ASOF_SCOPED_MODULES = ("research_repository.py",)
+
+
+def _function_string_literals(node: ast.AST) -> list[str]:
+    return [
+        child.value
+        for child in ast.walk(node)
+        if isinstance(child, ast.Constant) and isinstance(child.value, str)
+    ]
+
+
+def _research_asof_violations(package_root: Path) -> list[ArchitectureViolation]:
+    """研究查询必须能限定 as-of（找"取最新行但无时间边界"的函数）。
+
+    触发条件：一个函数里出现"取最新行"的 SQL 特征，却没有任何 as-of 约束标记。
+    这类查询在查历史日期时会读到当天之后的数据，V2 之后不允许。
+    """
+    violations: list[ArchitectureViolation] = []
+    repositories = package_root / "repositories"
+    if not repositories.exists():
+        return violations
+
+    for path in sorted(repositories.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        if path.name not in _ASOF_SCOPED_MODULES:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            literals = _function_string_literals(node)
+            if not literals:
+                continue
+            blob = "\n".join(literals)
+            if not all(marker in blob for marker in _LATEST_ROW_MARKERS):
+                continue
+            if any(marker in blob for marker in _ASOF_MARKERS):
+                continue
+            violations.append(
+                ArchitectureViolation(
+                    "research_sql_must_be_asof_bounded",
+                    f"{path.relative_to(package_root)}::{node.name}",
+                    "SQL 按 trade_date 取最新行但没有 as-of 约束（<= asof_date）",
+                )
+            )
     return violations

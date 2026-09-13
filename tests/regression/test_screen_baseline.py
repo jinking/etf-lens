@@ -18,6 +18,19 @@ SCREEN_CONTRACT = [
     "share_change_20d",
     "estimated_net_subscription_20d",
     "tags",
+    "quote_asof_date",
+    "share_asof_date",
+    "metric_asof_date",
+    "flow_asof_date",
+    "metric_calculation_version",
+    "flow_calculation_version",
+    "quote_staleness_days",
+    "share_staleness_days",
+    "metric_staleness_days",
+    "flow_staleness_days",
+    "research_asof_date",
+    "stale_blocks",
+    "data_quality",
 ]
 
 

@@ -1,5 +1,8 @@
 # V1 Roadmap
 
+> V2 升级（Point-in-Time / 公司行为复权 / Benchmark-Peer / Walk-Forward）按
+> `docs/POINT_IN_TIME.md` 与各阶段文档推进，进度见本文件末尾的「V2 进度」。
+
 ## Phase 0 — 工程骨架
 
 - [x] Python package
@@ -151,3 +154,23 @@ estimated_net_subscription
 7. **`tracking_error_60d` 覆盖**：需"指数行情 + 净值"同时具备 40 个对齐交易日，
    且窗口内没有未复权的公司行为。510300 等已可产出（实测 0.53%）；
    扩大覆盖要继续跑 `etf backfill-nav`。
+
+## V2 进度
+
+```text
+Phase 0  基线冻结与回归保护                  ✅ 完成
+         tests/regression/（compare/screen/flow/pulse/audit 五份快照）
+         domain/versions.py（口径版本集中登记）
+
+Phase 1  Point-in-Time 研究上下文            ✅ 完成
+         domain/research_context.py（策略）
+         repositories/research_repository.py（as-of 截断 + 逐块 as-of）
+         compare / screen / themes：CLI --asof、API asof_date、MCP asof_date
+         audit：research_sql_must_be_asof_bounded、future_data_in_research_snapshot
+         docs/POINT_IN_TIME.md
+
+Phase 2  Corporate Actions 与复权序列        ⬜ 未开始（当前靠"拒绝计算"防错）
+Phase 3  Benchmark / Peer 相对研究           ⬜ 未开始
+Phase 4  Watchboard 方法学验证（walk-forward）⬜ 未开始
+Phase 5  工程可靠性（uv.lock / CI / 文档漂移自检）⬜ 未开始
+```

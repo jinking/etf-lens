@@ -9,6 +9,7 @@ from etf_engine.audit import run_audit
 from etf_engine.audit.runner import format_report
 from etf_engine.config.settings import settings
 from etf_engine.db.migrate import run_migrations
+from etf_engine.domain.research_context import ResearchContext
 from etf_engine.jobs.backfill_flow import backfill_flow_history
 from etf_engine.jobs.backfill_history import backfill_history
 from etf_engine.jobs.backfill_index_history import backfill_index_history
@@ -33,6 +34,22 @@ from etf_engine.services.research_service import ResearchService
 from etf_engine.services.watchboard_service import WatchboardService
 
 app = typer.Typer(help="A股 ETF 研究引擎")
+
+
+def _research_context(
+    asof: str | None,
+    max_staleness_days: int | None,
+    require_same_trade_date: bool,
+) -> ResearchContext:
+    """把 CLI 参数翻译成研究上下文（as-of 是 Point-in-Time 的入口）。"""
+    try:
+        return ResearchContext(
+            asof_date=date.fromisoformat(asof) if asof else None,
+            max_staleness_days=max_staleness_days,
+            require_same_trade_date=require_same_trade_date,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
 
 @app.command("doctor")
@@ -150,8 +167,16 @@ def compare_cmd(
     security_ids: list[str] = typer.Argument(
         ..., help="待对比的ETF代码列表，例如 588200.SH 159915.SZ"
     ),
+    asof: str = typer.Option(None, "--asof", help="研究截止日（Point-in-Time），如 2026-09-11"),
+    max_staleness_days: int = typer.Option(
+        None, "--max-staleness-days", help="允许的数据滞后天数，超过则该项置空"
+    ),
+    require_same_day: bool = typer.Option(
+        False, "--require-same-day", help="只使用与 as-of 同一天的数据"
+    ),
 ):
-    results = ResearchService().compare(security_ids)
+    context = _research_context(asof, max_staleness_days, require_same_day)
+    results = ResearchService().compare(security_ids, context)
     if not results:
         typer.echo("未找到待对比的 ETF 数据。")
         return
@@ -163,6 +188,13 @@ def compare_cmd(
             f"60D回撤: {item['max_drawdown_60d']} | "
             f"估算规模: {item['estimated_aum']} | "
             f"20D均成交: {item['avg_turnover_amount_20d']}"
+        )
+        typer.echo(
+            f"    as-of: research={item['research_asof_date']} "
+            f"quote={item['quote_asof_date']} share={item['share_asof_date']} "
+            f"metric={item['metric_asof_date']} flow={item['flow_asof_date']} "
+            f"| 质量={item['data_quality']}"
+            + (f" | 置空: {'; '.join(item['stale_blocks'])}" if item["stale_blocks"] else "")
         )
 
 
@@ -248,8 +280,13 @@ def screen_cmd(
     ),
     share_growth: bool = typer.Option(False, "--share-growth", help="仅筛选20日份额增加的ETF"),
     limit: int = typer.Option(20, "--limit", "-l", help="返回数量限制"),
+    asof: str = typer.Option(None, "--asof", help="研究截止日（Point-in-Time），如 2026-09-11"),
+    max_staleness_days: int = typer.Option(
+        None, "--max-staleness-days", help="允许的数据滞后天数，超过则该数据块置空"
+    ),
 ):
     results = ResearchService().screen(
+        context=_research_context(asof, max_staleness_days, False),
         query=query,
         tag=tag,
         min_aum=min_aum,

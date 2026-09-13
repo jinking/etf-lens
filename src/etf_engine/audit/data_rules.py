@@ -71,6 +71,12 @@ DATA_RULES = (
         SEVERITY_WARN,
         "沪深两市成交额应当成对出现；只落一边说明上游缺了一边",
     ),
+    DataRule(
+        "future_data_in_research_snapshot",
+        SEVERITY_ERROR,
+        "研究派生行不得领先于它依赖的事实：mart 的日期若晚于对应 core 事实的"
+        "最新日期，说明用到了当时还不存在的数据（Point-in-Time 违规）",
+    ),
 )
 
 
@@ -301,6 +307,51 @@ def _incomplete_turnover_violations(con) -> list[dict]:
     ]
 
 
+def _future_data_violations(con) -> list[dict]:
+    """派生行不得领先于其依赖的事实（Point-in-Time 违规）。
+
+    一一对应关系：
+
+    * ``mart.etf_metric_daily`` ← ``core.etf_quote_daily``（收益/波动/回撤的来源）
+    * ``mart.etf_flow_daily``   ← ``core.etf_share_daily``（份额变化的来源）
+    """
+    checks = (
+        (
+            "mart.etf_metric_daily",
+            "core.etf_quote_daily",
+        ),
+        (
+            "mart.etf_flow_daily",
+            "core.etf_share_daily",
+        ),
+    )
+    violations: list[dict] = []
+    for derived, fact in checks:
+        rows = _rows(
+            con,
+            f"""
+            SELECT d.security_id, d.trade_date, f.latest_fact_date
+            FROM {derived} d
+            JOIN (
+                SELECT security_id, MAX(trade_date) AS latest_fact_date
+                FROM {fact}
+                GROUP BY security_id
+            ) f ON f.security_id = d.security_id
+            WHERE d.trade_date > f.latest_fact_date
+            ORDER BY d.trade_date DESC
+            LIMIT 10
+            """,
+        )
+        violations.extend(
+            {
+                "dataset": derived,
+                "detail": f"{security_id} 派生到 {trade_date}，但 {fact} 只到 {latest_fact_date}",
+            }
+            for security_id, trade_date, latest_fact_date in rows
+        )
+    return violations
+
+
 _IMPLEMENTATIONS = {
     "rows_on_non_trading_days": _non_trading_day_violations,
     "orphan_mart_rows": _orphan_mart_violations,
@@ -310,6 +361,7 @@ _IMPLEMENTATIONS = {
     "missing_source_metadata": _missing_source_metadata_violations,
     "holdings_without_report_date": _holdings_without_report_date,
     "incomplete_market_turnover": _incomplete_turnover_violations,
+    "future_data_in_research_snapshot": _future_data_violations,
 }
 
 

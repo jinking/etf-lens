@@ -26,15 +26,58 @@ def _write(root: Path, relative: str, source: str) -> None:
 
 def _base_sources(root: Path) -> None:
     """最小可用的包骨架（含能力接口，避免干扰其它规则）。"""
-    body = "\n".join(
-        f"class {name}:\n    pass\n" for name in REQUIRED_CAPABILITY_INTERFACES
-    )
+    body = "\n".join(f"class {name}:\n    pass\n" for name in REQUIRED_CAPABILITY_INTERFACES)
     _write(root, "sources/base.py", body)
     _write(root, "sources/__init__.py", "")
 
 
 def test_real_package_has_no_architecture_violations():
     assert check_architecture(PACKAGE_ROOT) == []
+
+
+def test_research_sql_without_asof_is_flagged(tmp_path):
+    """研究查询按 trade_date 取最新行却不受 as-of 约束 → 查历史会读到未来数据。"""
+    _base_sources(tmp_path)
+    _write(
+        tmp_path,
+        "repositories/research_repository.py",
+        """
+        def compare(security_ids):
+            return '''
+                SELECT *,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY security_id ORDER BY trade_date DESC
+                       ) AS rn
+                FROM core.etf_quote_daily
+            '''
+        """,
+    )
+
+    violations = check_architecture(tmp_path)
+
+    assert [item.rule for item in violations] == ["research_sql_must_be_asof_bounded"]
+    assert "compare" in violations[0].path
+
+
+def test_research_sql_with_asof_bound_is_accepted(tmp_path):
+    _base_sources(tmp_path)
+    _write(
+        tmp_path,
+        "repositories/research_repository.py",
+        """
+        def compare(security_ids):
+            return '''
+                SELECT *,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY security_id ORDER BY trade_date DESC
+                       ) AS rn
+                FROM core.etf_quote_daily
+                WHERE (? IS NULL OR trade_date <= ?)
+            '''
+        """,
+    )
+
+    assert check_architecture(tmp_path) == []
 
 
 def test_business_layer_cannot_import_akshare(tmp_path):
@@ -52,9 +95,7 @@ def test_business_layer_cannot_import_akshare(tmp_path):
 
     violations = check_architecture(tmp_path)
 
-    assert [item.rule for item in violations] == [
-        "no_third_party_finance_in_business_layers"
-    ]
+    assert [item.rule for item in violations] == ["no_third_party_finance_in_business_layers"]
     assert "akshare" in violations[0].detail
 
 

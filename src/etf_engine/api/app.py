@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from etf_engine.domain.research_context import ResearchContext
 from etf_engine.jobs.backfill_index_history import backfill_index_history
 from etf_engine.jobs.backfill_nav import backfill_nav
 from etf_engine.jobs.compute_mart import compute_mart
@@ -159,10 +160,32 @@ def trigger_compute_mart(security_ids: list[str] | None = None):
 
 
 @app.get("/api/v1/research/compare")
-def compare_etfs(security_ids: str = Query(..., description="逗号分隔的ETF代码列表")):
+def compare_etfs(
+    security_ids: str = Query(..., description="逗号分隔的ETF代码列表"),
+    asof_date: date | None = None,
+    max_staleness_days: int | None = Query(default=None, ge=0),
+    require_same_trade_date: bool = False,
+):
+    """Point-in-Time 对比：只使用 as-of 当天（含）之前的数据。"""
     ids = [sid.strip() for sid in security_ids.split(",") if sid.strip()]
-    data = research_service.compare(ids)
-    return {"data": data, "meta": {"count": len(data)}, "errors": []}
+    try:
+        context = ResearchContext(
+            asof_date=asof_date,
+            max_staleness_days=max_staleness_days,
+            require_same_trade_date=require_same_trade_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    data = research_service.compare(ids, context)
+    return {
+        "data": data,
+        "meta": {
+            "count": len(data),
+            "asof_date": context.asof_date.isoformat() if context.asof_date else None,
+            "max_staleness_days": context.max_staleness_days,
+        },
+        "errors": [],
+    }
 
 
 @app.post("/api/v1/sync/holdings")
@@ -247,8 +270,15 @@ def screen_etfs(
     max_drawdown_60d: float | None = None,
     share_growth_only: bool = False,
     limit: int = Query(default=50, ge=1, le=200),
+    asof_date: date | None = None,
+    max_staleness_days: int | None = Query(default=None, ge=0),
 ):
+    try:
+        context = ResearchContext(asof_date=asof_date, max_staleness_days=max_staleness_days)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     data = research_service.screen(
+        context=context,
         query=query,
         tag=tag,
         min_aum=min_aum,
@@ -258,16 +288,35 @@ def screen_etfs(
         share_growth_only=share_growth_only,
         limit=limit,
     )
-    return {"data": data, "meta": {"count": len(data)}, "errors": []}
+    return {
+        "data": data,
+        "meta": {
+            "count": len(data),
+            "asof_date": context.asof_date.isoformat() if context.asof_date else None,
+        },
+        "errors": [],
+    }
 
 
 @app.get("/api/v1/research/themes")
 def list_themes(
     limit: int = Query(default=50, ge=1, le=200),
     min_etf_count: int = Query(default=1, ge=1),
+    asof_date: date | None = None,
 ):
-    data = research_service.themes(limit=limit, min_etf_count=min_etf_count)
-    return {"data": data, "meta": {"count": len(data)}, "errors": []}
+    data = research_service.themes(
+        limit=limit,
+        min_etf_count=min_etf_count,
+        context=ResearchContext(asof_date=asof_date),
+    )
+    return {
+        "data": data,
+        "meta": {
+            "count": len(data),
+            "asof_date": asof_date.isoformat() if asof_date else None,
+        },
+        "errors": [],
+    }
 
 
 @app.get("/watchboard")

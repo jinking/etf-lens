@@ -19,6 +19,7 @@ EXPECTED_RULES = {
     "missing_source_metadata": "ERROR",
     "holdings_without_report_date": "ERROR",
     "incomplete_market_turnover": "WARN",
+    "future_data_in_research_snapshot": "ERROR",
 }
 
 

@@ -1,7 +1,8 @@
 """`etf compare` 的行为基线。
 
-Phase 1（Point-in-Time）会**故意**给输出加上 ``*_asof_date`` / ``*_staleness_days``，
-届时这份契约要一起更新——更新本身就是"输出契约变了"的显式记录。
+Phase 1（Point-in-Time）已按计划给输出加上 ``*_asof_date`` / ``*_staleness_days`` /
+``stale_blocks`` / ``data_quality``——这份契约随之上移，更新本身就是
+"输出契约变了"的显式记录。
 """
 
 import pytest
@@ -28,6 +29,18 @@ COMPARE_CONTRACT = [
     "share_change_pct_20d",
     "estimated_net_subscription_20d",
     "quote_asof_date",
+    "share_asof_date",
+    "metric_asof_date",
+    "flow_asof_date",
+    "metric_calculation_version",
+    "flow_calculation_version",
+    "quote_staleness_days",
+    "share_staleness_days",
+    "metric_staleness_days",
+    "flow_staleness_days",
+    "research_asof_date",
+    "stale_blocks",
+    "data_quality",
 ]
 
 
@@ -59,7 +72,9 @@ def test_compare_values_match_the_seed(warehouse):
     # 份额 20 日变化 = 200，估算申赎 = 20 × 10 × 1.5
     assert first["share_change_20d"] == 200.0
     assert first["estimated_net_subscription_20d"] == pytest.approx(300.0)
-    assert first["quote_asof_date"].isoformat() == warehouse
+    assert first["quote_asof_date"] == warehouse
+    assert first["data_quality"] == "PASS"
+    assert first["stale_blocks"] == []
     # 种子只有 25 个交易日：60 日窗口不足 → NULL（不用近似值凑）
     assert first["return_60d"] is None
     assert first["max_drawdown_60d"] is None
