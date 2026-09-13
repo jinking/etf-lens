@@ -31,6 +31,7 @@ from etf_engine.domain.models import (
     IndexQuote,
     SourceMeta,
 )
+from etf_engine.jobs.compute_adjusted_series import compute_adjusted_series
 from etf_engine.jobs.compute_mart import compute_mart
 from etf_engine.repositories.holding_repository import HoldingRepository
 from etf_engine.repositories.index_repository import IndexRepository
@@ -213,6 +214,9 @@ def seed_warehouse() -> None:
     )
     TagRepository().upsert_tags(tags)
 
+    # 生产口径是 v2（metric_v2 / flow_v2），因此夹具也必须先建复权序列，
+    # 否则研究查询按显式版本过滤后取不到任何行。
+    compute_adjusted_series()
     compute_mart()
 
 

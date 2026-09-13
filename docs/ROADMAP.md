@@ -158,6 +158,26 @@ estimated_net_subscription
 ## V2 进度
 
 ```text
+V2.1 正确性升级（不扩功能，见 /Users/huangjinjin/Downloads/ETF_Lens_V2_1_Agent_Correctness_Upgrade.md）
+
+Phase 1  统一 Research Version Resolver          ✅ 完成
+         domain/versions.py 增加 CURRENT_RESEARCH_VERSIONS（metric_v2 / flow_v2 /
+         adjust_v1 / peer_v1 / market_norm_v1）与 version_for()；
+         ResearchRepository 对 mart 派生表显式过滤 calculation_version，
+         不再让"同日 v1/v2"由 ROW_NUMBER 的随机 tie-break 决定；
+         回归夹具改为先建复权序列（生产口径是 v2）。
+
+Phase 2  拆分 Price / NAV / Share 三套复权因子    ⬜ 未开始
+         （P0-2：现金分红目前会改变 adjusted_shares，可能制造假赎回）
+Phase 3  修复 GitHub Actions 普通 CI             ⬜ 未开始
+         （P0-3：CI 需要 -m "not live" 与夹具库）
+Phase 4  Point-in-Time 覆盖矩阵                  ⬜ 未开始
+         （P1-1：Tag / Holdings / Peer / Profile 尚未受 as-of 约束）
+Phase 5  历史验证命名与能力边界                  ⬜ 未开始
+Phase 6  V2.1 最终验收（Case A–D）                ⬜ 未开始
+```
+
+```text
 Phase 0  基线冻结与回归保护                  ✅ 完成
          tests/regression/（compare/screen/flow/pulse/audit 五份快照）
          domain/versions.py（口径版本集中登记）

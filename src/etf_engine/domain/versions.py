@@ -65,3 +65,38 @@ CURRENT_VERSION_BY_DATASET: dict[str, str] = {
     "mart.market_pulse_daily": PULSE_VERSION,
     "core.etf_tag": TAG_VERSION,
 }
+
+#: 研发口径 → 当前生产消费版本。
+#:
+#: 为什么需要它：同一张 mart 表允许 v1/v2 历史并存（口径不覆盖），
+#: 但**所有研究查询必须显式指定用哪一版**。在此之前，
+#: ``ROW_NUMBER() OVER (PARTITION BY security_id ORDER BY trade_date DESC)``
+#: 在"同一天同时存在 v1 与 v2"时取到哪一行由数据库决定——研究结论会随
+#: 执行计划漂移，这是最隐蔽的一类错误。
+CURRENT_RESEARCH_VERSIONS: dict[str, str] = {
+    "metric": METRIC_V2_VERSION,
+    "flow": FLOW_V2_VERSION,
+    "adjust": ADJUST_VERSION,
+    "peer": PEER_VERSION,
+    "market_norm": MARKET_NORM_VERSION,
+}
+
+
+def version_for(block: str) -> str:
+    """取某一层的当前生产版本（未知层直接报错，避免悄悄用错口径）。"""
+    try:
+        return CURRENT_RESEARCH_VERSIONS[block]
+    except KeyError as exc:  # pragma: no cover - 配置错误
+        raise KeyError(
+            f"未登记的研究版本层：{block}；可用：{sorted(CURRENT_RESEARCH_VERSIONS)}"
+        ) from exc
+
+
+def current_metric_version() -> str:
+    """研究指标（收益/波动/回撤/流动性）的当前生产版本。"""
+    return version_for("metric")
+
+
+def current_flow_version() -> str:
+    """资金流（份额变化/估算申赎）的当前生产版本。"""
+    return version_for("flow")

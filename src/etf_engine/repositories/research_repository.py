@@ -14,6 +14,7 @@ SQL 属于 Repository 层：Service 只做参数校验与业务编排，不直�
 from etf_engine.config.settings import settings
 from etf_engine.db.connection import connect
 from etf_engine.domain.research_context import ResearchContext
+from etf_engine.domain.versions import current_flow_version, current_metric_version
 
 _LATEST_COLUMNS = """
             SELECT *,
@@ -29,6 +30,7 @@ def _latest_cte(
     *,
     where: str | None = None,
     date_column: str = "trade_date",
+    versioned: bool = False,
 ) -> str:
     """ "每个 security_id 取 as-of 之前最新一行"的 CTE。
 
@@ -37,6 +39,10 @@ def _latest_cte(
     """
     conditions = [where] if where else []
     conditions.append(f"(? IS NULL OR {date_column} <= ?)")
+    if versioned:
+        # 同一天可能同时存在多个口径版本：必须由业务显式指定，
+        # 不能让"最新一行"的竞争由数据库决定。
+        conditions.append("calculation_version = ?")
     return f"""
         {name} AS (
             SELECT * EXCLUDE (rn)
@@ -48,9 +54,12 @@ def _latest_cte(
         )"""
 
 
-def _asof_params(context: ResearchContext) -> list:
-    """一个 CTE 消耗两个 as-of 占位符。"""
-    return [context.asof_date, context.asof_date]
+def _cte_params(context: ResearchContext, *, version: str | None = None) -> list[object]:
+    """一个 CTE 的参数：两个 as-of 占位符 +（可选）口径版本。"""
+    params: list[object] = [context.asof_date, context.asof_date]
+    if version is not None:
+        params.append(version)
+    return params
 
 
 _COMPARE_SELECT = """
@@ -125,13 +134,13 @@ class ResearchRepository:
         ctes = ",\n".join(
             [
                 _latest_cte("latest_shares", "core.etf_share_daily"),
-                _latest_cte("latest_metrics", "mart.etf_metric_daily"),
-                _latest_cte("latest_flows", "mart.etf_flow_daily"),
+                _latest_cte("latest_metrics", "mart.etf_metric_daily", versioned=True),
+                _latest_cte("latest_flows", "mart.etf_flow_daily", versioned=True),
             ]
         )
-        params: list = []
-        for _ in range(3):
-            params.extend(_asof_params(context))
+        params: list = _cte_params(context)
+        params.extend(_cte_params(context, version=current_metric_version()))
+        params.extend(_cte_params(context, version=current_flow_version()))
         params.extend([min_etf_count, limit])
 
         with connect(settings.database_path) as con:
@@ -177,14 +186,19 @@ class ResearchRepository:
             [
                 _latest_cte("latest_quotes", "core.etf_quote_daily", where=latest_ids),
                 _latest_cte("latest_shares", "core.etf_share_daily", where=latest_ids),
-                _latest_cte("latest_metrics", "mart.etf_metric_daily", where=latest_ids),
-                _latest_cte("latest_flows", "mart.etf_flow_daily", where=latest_ids),
+                _latest_cte(
+                    "latest_metrics", "mart.etf_metric_daily", where=latest_ids, versioned=True
+                ),
+                _latest_cte(
+                    "latest_flows", "mart.etf_flow_daily", where=latest_ids, versioned=True
+                ),
             ]
         )
         params: list = []
-        for _ in range(4):
-            params.extend(security_ids)
-            params.extend(_asof_params(context))
+        params.extend([*security_ids, *_cte_params(context)])  # quote
+        params.extend([*security_ids, *_cte_params(context)])  # share
+        params.extend([*security_ids, *_cte_params(context, version=current_metric_version())])
+        params.extend([*security_ids, *_cte_params(context, version=current_flow_version())])
 
         sql = f"""
         WITH {ctes}
@@ -237,13 +251,15 @@ class ResearchRepository:
             [
                 _latest_cte("latest_quotes", "core.etf_quote_daily"),
                 _latest_cte("latest_shares", "core.etf_share_daily"),
-                _latest_cte("latest_metrics", "mart.etf_metric_daily"),
-                _latest_cte("latest_flows", "mart.etf_flow_daily"),
+                _latest_cte("latest_metrics", "mart.etf_metric_daily", versioned=True),
+                _latest_cte("latest_flows", "mart.etf_flow_daily", versioned=True),
             ]
         )
         params: list = []
-        for _ in range(4):
-            params.extend(_asof_params(context))
+        params.extend(_cte_params(context))
+        params.extend(_cte_params(context))
+        params.extend(_cte_params(context, version=current_metric_version()))
+        params.extend(_cte_params(context, version=current_flow_version()))
         params.extend(values)
 
         sql = f"""
