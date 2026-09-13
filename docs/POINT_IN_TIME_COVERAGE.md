@@ -45,3 +45,22 @@ tests/integration/test_point_in_time_compare.py  quote/share/metric/flow
 ```
 
 统一套路：库中放 `T1 旧值` 与 `T2 新值`，查询 `asof ∈ (T1, T2)`，必须得到**旧值**。
+
+## 与自检规则的对应（升级方案 §22）
+
+方案建议把"已经踩过一次的坑"升级成可执行规则。落地情况如下——有的直接是
+`etf audit` 规则，有的由"规则 + 测试"共同兜住，这里写清楚是哪一种，避免
+看起来像是漏做了：
+
+| 建议规则 | 落地形态 | 说明 |
+| --- | --- | --- |
+| `research_query_requires_explicit_version` | **audit 规则**（架构） | 研究查询读 `mart.etf_metric_daily` / `mart.etf_flow_daily` 时 `_latest_cte(..., versioned=True)` 必须显式限定 `calculation_version` |
+| `cash_dividend_changes_share_factor` | **audit 规则**（数据） | 现金分红不得改变份额因子，否则 `flow_v2` 读成假赎回 |
+| `current_version_not_registered` | **audit 规则**（数据） | `estimates_without_version` / `mixed_calculation_versions`：派生表出现未登记口径版本即报 |
+| `pit_tag_future_leak` | **规则 + 测试** | `future_data_in_research_snapshot` 兜住 mart 领先 core 的形态；按标签筛选的有效期约束由 `test_pit_tags.py` 逐条断言 |
+| `pit_peer_future_leak` | **规则 + 测试** | 同上 + `test_pit_peer.py`（按日快照，不复用未来分组） |
+| `pit_holdings_future_leak` | **规则 + 测试** | 同上 + `test_pit_holdings.py`（`report_date` / `disclosure_date` 双约束） |
+
+为什么后三条不做成纯 SQL 规则：泄漏发生在**查询层**（同一个 as-of 用哪一行），
+而不是表里某一行本身不合法。用 SQL 去猜"这次查询用的是哪天"会写出一个
+看起来很聪明、实际会误报的规则；把它们固定在集成测试里更可靠。

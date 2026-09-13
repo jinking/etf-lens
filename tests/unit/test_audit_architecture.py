@@ -156,3 +156,42 @@ def test_missing_capability_interface_is_reported(tmp_path):
 
     assert [item.rule for item in violations] == ["capability_interfaces_present"]
     assert REQUIRED_CAPABILITY_INTERFACES[0] in violations[0].detail
+
+
+def test_research_query_without_explicit_version_is_flagged(tmp_path):
+    """同日 v1/v2 并存的表：不写 calculation_version 就等于让 tie-break 决定结论。"""
+    _base_sources(tmp_path)
+    _write(
+        tmp_path,
+        "repositories/research_repository.py",
+        """
+        def compare(security_ids):
+            return [
+                _latest_cte("latest_metrics", "mart.etf_metric_daily", where=None),
+                _latest_cte("latest_flows", "mart.etf_flow_daily", versioned=True),
+            ]
+        """,
+    )
+
+    violations = check_architecture(tmp_path)
+
+    assert [item.rule for item in violations] == ["research_query_requires_explicit_version"]
+    assert "latest_metrics" in violations[0].path
+    assert "mart.etf_metric_daily" in violations[0].detail
+
+
+def test_research_query_with_explicit_version_passes(tmp_path):
+    _base_sources(tmp_path)
+    _write(
+        tmp_path,
+        "repositories/research_repository.py",
+        """
+        def compare(security_ids):
+            return [
+                _latest_cte("latest_metrics", "mart.etf_metric_daily", versioned=True),
+                _latest_cte("latest_flows", "mart.etf_flow_daily", versioned=True),
+            ]
+        """,
+    )
+
+    assert check_architecture(tmp_path) == []

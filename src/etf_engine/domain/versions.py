@@ -58,10 +58,14 @@ REGISTERED_VERSIONS: frozenset[str] = frozenset(
     }
 )
 
-#: 当前生产口径（写库时使用）。
+#: 当前生产口径：**外部消费默认读哪一版**。
+#:
+#: 与 :data:`CURRENT_RESEARCH_VERSIONS` 是同一件事的两种索引方式——那边按"层"
+#: （metric / flow / adjust …），这边按表名，给不关心层次概念的调用方用。
+#: v1 不会删除：历史口径保留是为了让旧数据仍可解释，而不是为了让新查询继续读它。
 CURRENT_VERSION_BY_DATASET: dict[str, str] = {
-    "mart.etf_metric_daily": METRIC_VERSION,
-    "mart.etf_flow_daily": FLOW_VERSION,
+    "mart.etf_metric_daily": METRIC_V2_VERSION,
+    "mart.etf_flow_daily": FLOW_V2_VERSION,
     "mart.market_pulse_daily": PULSE_VERSION,
     "core.etf_tag": TAG_VERSION,
 }

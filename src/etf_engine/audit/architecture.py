@@ -11,6 +11,7 @@ CLI / API / MCP → Application Services → Research → Repositories → Sourc
 """
 
 import ast
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -68,6 +69,11 @@ ARCHITECTURE_RULES = (
         "research_sql_must_be_asof_bounded",
         "研究查询不得无界取最新行：凡按 trade_date 取最新行的函数，"
         "必须同时带 as-of 约束（V2 Point-in-Time）",
+    ),
+    ArchitectureRule(
+        "research_query_requires_explicit_version",
+        "研究查询读取允许同日多版本的 mart 表（metric/flow）时，必须显式指定 "
+        "calculation_version，不能让 ROW_NUMBER 的 tie-break 决定用哪一版（V2.1 P0-1）",
     ),
 )
 
@@ -163,6 +169,7 @@ def check_architecture(package_root: Path) -> list[ArchitectureViolation]:
         )
 
     violations.extend(_research_asof_violations(package_root))
+    violations.extend(_research_version_violations(package_root))
     return violations
 
 
@@ -176,6 +183,14 @@ _ASOF_MARKERS = ("IS NULL OR", "<= ?")
 #: 它们展示的是"现在"，而不是"某个历史时点的研究结论"，要纳入时先改这里并同步文档。
 _ASOF_SCOPED_MODULES = ("research_repository.py",)
 
+#: 允许"同一天同时存在 v1/v2"的 mart 表：读它们时必须显式指定口径版本。
+_VERSIONED_MART_TABLES = ("mart.etf_metric_daily", "mart.etf_flow_daily")
+
+#: ``_latest_cte("latest_metrics", "mart.etf_metric_daily", ..., versioned=True)``
+_LATEST_CTE_CALL = re.compile(
+    r"_latest_cte\(\s*\"(?P<name>[^\"]+)\"\s*,\s*\"(?P<table>[^\"]+)\"(?P<args>[^)]*)\)"
+)
+
 
 def _function_string_literals(node: ast.AST) -> list[str]:
     return [
@@ -183,6 +198,37 @@ def _function_string_literals(node: ast.AST) -> list[str]:
         for child in ast.walk(node)
         if isinstance(child, ast.Constant) and isinstance(child.value, str)
     ]
+
+
+def _research_version_violations(package_root: Path) -> list[ArchitectureViolation]:
+    """研究查询读"同日多版本"的表时，必须显式指定 ``calculation_version``。
+
+    ``mart.etf_metric_daily`` / ``mart.etf_flow_daily`` 允许
+    ``security_id + trade_date + calculation_version`` 并存 v1/v2。若查询只按
+    ``trade_date DESC`` 取最新一行，同一天取到哪一版由执行计划决定——
+    同一问题重复执行可能得到不同结论（V2.1 P0-1 就是这个问题）。
+
+    检查点很具体：``_latest_cte(..., "mart.etf_metric_daily", ...)`` 这类调用
+    必须带 ``versioned=True``，否则记违规。
+    """
+    violations: list[ArchitectureViolation] = []
+    for path in sorted((package_root / "repositories").rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        source = path.read_text(encoding="utf-8")
+        for match in _LATEST_CTE_CALL.finditer(source):
+            if match.group("table") not in _VERSIONED_MART_TABLES:
+                continue
+            if "versioned=True" in match.group("args"):
+                continue
+            violations.append(
+                ArchitectureViolation(
+                    "research_query_requires_explicit_version",
+                    f"{path.relative_to(package_root)}::{match.group('name')}",
+                    f"读取 {match.group('table')} 时没有显式指定 calculation_version",
+                )
+            )
+    return violations
 
 
 def _research_asof_violations(package_root: Path) -> list[ArchitectureViolation]:

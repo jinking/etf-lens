@@ -50,6 +50,7 @@ etf audit --samples 10
 | 规则 | 内容 |
 | --- | --- |
 | `research_sql_must_be_asof_bounded` | 研究查询（`repositories/research_repository.py`）凡按 `trade_date` 取最新行，必须同时带 as-of 约束；否则查历史会读到未来数据 |
+| `research_query_requires_explicit_version` | 研究查询读取允许同日多版本的 `mart.etf_metric_daily` / `mart.etf_flow_daily` 时，`_latest_cte(..., versioned=True)` 必须显式指定 `calculation_version`；否则同一天取到 v1 还是 v2 由 `ROW_NUMBER` 的 tie-break 决定（V2.1 P0-1） |
 
 ### V2 Phase 2/3/5 新增规则
 
@@ -58,6 +59,7 @@ etf audit --samples 10
 | `unadjusted_flow_crosses_corporate_action` | ERROR | 折算窗口内只有 v1 资金流口径、缺 v2 → 机械份额变化会被误读成申赎 |
 | `adjusted_series_missing_version` | ERROR | 复权行缺口径版本，或版本未在 `domain/versions.py` 登记 |
 | `adjusted_series_future_action_leak` | ERROR | 复权因子用了未来才知道的公司行为（Point-in-Time 泄漏） |
+| `cash_dividend_changes_share_factor` | ERROR | 现金分红不得改变份额因子（除权日实际份额没变；跳变会让 `flow_v2` 读成假赎回）。同一天另有拆分/折算导致份额因子变化时属合法，规则会跳过 |
 | `docs_consistency` | WARN | 结构化文档漂移：README/脚本里的 `etf <cmd>` 必须存在；代码里的 `calculation_version` 必须登记；迁移建的表必须写进 `DATA_MODEL.md` |
 
 `mixed_calculation_versions` 的语义在 V2 更新为"出现**未登记**版本才告警"：

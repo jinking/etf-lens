@@ -102,6 +102,23 @@ def test_screen_uses_the_production_version(tmp_path, monkeypatch):
     assert rows[0]["return_20d"] == 0.99
 
 
+def test_repeated_compare_is_byte_for_byte_stable(tmp_path, monkeypatch):
+    """升级方案 §21 Case C：同日 v1/v2 并存时，重复 100 次结果必须完全一致。
+
+    旧实现靠 ``ROW_NUMBER`` 的 tie-break 决定取哪一行，同一天重复查询可能漂移；
+    这里把"稳定"变成可执行的断言，而不是靠观察。
+    """
+    _prepare(tmp_path, monkeypatch)
+    service = ResearchService()
+
+    first = service.compare([SECURITY_ID], ResearchContext(asof_date=ASOF))[0]
+    for _ in range(100):
+        assert service.compare([SECURITY_ID], ResearchContext(asof_date=ASOF))[0] == first
+
+    assert first["metric_calculation_version"] == current_metric_version()
+    assert first["flow_calculation_version"] == current_flow_version()
+
+
 def test_resolver_rejects_unknown_blocks():
     import pytest
 
@@ -109,3 +126,13 @@ def test_resolver_rejects_unknown_blocks():
 
     with pytest.raises(KeyError):
         version_for("not_a_block")
+
+
+def test_production_version_registry_is_consistent():
+    """按表名的默认口径与按层的 Resolver 必须指的是同一版，否则又是两套真相。"""
+    from etf_engine.domain.versions import CURRENT_VERSION_BY_DATASET
+
+    assert CURRENT_VERSION_BY_DATASET["mart.etf_metric_daily"] == current_metric_version()
+    assert CURRENT_VERSION_BY_DATASET["mart.etf_flow_daily"] == current_flow_version()
+    assert current_metric_version() != "metric_v1", "默认研究口径必须是 v2（升级方案 §2.6）"
+    assert current_flow_version() != "flow_v1"
