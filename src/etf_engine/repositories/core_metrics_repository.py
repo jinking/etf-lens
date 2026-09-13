@@ -2,6 +2,7 @@ from datetime import date
 
 from etf_engine.config.settings import settings
 from etf_engine.db.connection import connect
+from etf_engine.domain.versions import current_flow_version, current_metric_version
 
 
 class CoreMetricsRepository:
@@ -57,6 +58,63 @@ class CoreMetricsRepository:
                 """,
                 [security_id, asof_date],
             )
+
+    def adjusted_nav_history(self, security_id: str, asof_date: date) -> list[dict]:
+        with connect(settings.database_path) as con:
+            return self._rows(
+                con,
+                """
+                SELECT trade_date AS nav_date, adjusted_nav
+                FROM mart.etf_adjusted_daily
+                WHERE security_id = ? AND trade_date <= ? AND adjusted_nav IS NOT NULL
+                ORDER BY trade_date
+                """,
+                [security_id, asof_date],
+            )
+
+    def metric_asof(
+        self,
+        security_id: str,
+        asof_date: date | None = None,
+        calculation_version: str | None = None,
+    ) -> dict | None:
+        version = calculation_version or current_metric_version()
+        with connect(settings.database_path) as con:
+            rows = self._rows(
+                con,
+                """
+                SELECT * FROM mart.etf_metric_daily
+                WHERE security_id = ?
+                  AND calculation_version = ?
+                  AND (? IS NULL OR trade_date <= ?)
+                ORDER BY trade_date DESC
+                LIMIT 1
+                """,
+                [security_id, version, asof_date, asof_date],
+            )
+            return rows[0] if rows else None
+
+    def flow_asof(
+        self,
+        security_id: str,
+        asof_date: date | None = None,
+        calculation_version: str | None = None,
+    ) -> dict | None:
+        version = calculation_version or current_flow_version()
+        with connect(settings.database_path) as con:
+            rows = self._rows(
+                con,
+                """
+                SELECT * FROM mart.etf_flow_daily
+                WHERE security_id = ?
+                  AND calculation_version = ?
+                  AND (? IS NULL OR trade_date <= ?)
+                ORDER BY trade_date DESC
+                LIMIT 1
+                """,
+                [security_id, version, asof_date, asof_date],
+            )
+            return rows[0] if rows else None
 
     def tracking_index(self, security_id: str, asof_date: date) -> dict | None:
         with connect(settings.database_path) as con:

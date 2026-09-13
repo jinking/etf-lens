@@ -96,6 +96,14 @@ def test_core_metrics_endpoint_aggregates_facts_and_derived_metrics(tmp_path, mo
             [datetime(2026, 8, 13, 15, 0)],
         )
 
+    from etf_engine.jobs.compute_adjusted_series import compute_adjusted_series
+    from etf_engine.jobs.compute_mart import compute_mart
+    from etf_engine.repositories.trading_calendar_repository import TradingCalendarRepository
+
+    TradingCalendarRepository().upsert_many(dates, source="test", upstream_source="test")
+    compute_adjusted_series(["588200.SH"])
+    compute_mart(["588200.SH"])
+
     response = TestClient(api_module.app).get("/api/v1/etfs/588200.SH/core-metrics")
     body = response.json()
 
@@ -111,7 +119,7 @@ def test_core_metrics_endpoint_aggregates_facts_and_derived_metrics(tmp_path, mo
     assert body["data"]["share_change_20d"] == 20
     assert body["data"]["estimated_net_subscription_20d"] is not None
     assert body["data"]["estimated_net_subscription_is_estimated"] is True
-    assert body["data"]["estimated_net_subscription_calculation_version"] == "flow_v1"
+    assert body["data"]["estimated_net_subscription_calculation_version"] == "flow_v2"
     assert body["data"]["market_return_20d"] == pytest.approx(20 / 140)
     assert body["data"]["market_return_60d"] == pytest.approx(0.6)
     assert body["data"]["max_drawdown_60d"] == 0
