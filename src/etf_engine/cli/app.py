@@ -15,6 +15,7 @@ from etf_engine.jobs.backfill_history import backfill_history
 from etf_engine.jobs.backfill_index_history import backfill_index_history
 from etf_engine.jobs.backfill_nav import backfill_nav
 from etf_engine.jobs.compute_adjusted_series import compute_adjusted_series
+from etf_engine.jobs.compute_market_norm import compute_market_norm
 from etf_engine.jobs.compute_mart import compute_mart
 from etf_engine.jobs.compute_peer_metrics import compute_peer_metrics
 from etf_engine.jobs.compute_pulse import backfill_pulse_history, compute_market_pulse
@@ -29,6 +30,7 @@ from etf_engine.jobs.sync_master import sync_master
 from etf_engine.jobs.sync_nav import sync_nav
 from etf_engine.jobs.sync_quotes import sync_quotes
 from etf_engine.jobs.sync_shares import sync_shares
+from etf_engine.jobs.validate_pulse import validate_pulse
 from etf_engine.mcp.server import run_stdio
 from etf_engine.repositories.trading_calendar_repository import TradingCalendarRepository
 from etf_engine.services.core_metrics_service import ETFCoreMetricsService
@@ -103,6 +105,44 @@ def peer_metrics_cmd(
     """计算同类分组与同类分位（peer_v1）。"""
     parsed = date.fromisoformat(asof_date) if asof_date else None
     typer.echo(compute_peer_metrics(asof=parsed))
+
+
+@app.command("market-norm")
+def market_norm_cmd(
+    asof_date: str = typer.Option(None, "--asof", help="as-of 日期"),
+):
+    """计算市场层标准化指标（market_norm_v1）：两融/流通市值、成交额/流通市值、涨跌家数比。"""
+    parsed = date.fromisoformat(asof_date) if asof_date else None
+    typer.echo(compute_market_norm(asof=parsed))
+
+
+@app.command("validate-pulse")
+def validate_pulse_cmd(
+    asof_date: str = typer.Option(None, "--asof", help="as-of 日期"),
+    write_doc: bool = typer.Option(False, "--write-doc", help="写入 docs/PULSE_VALIDATION.md"),
+    json_output: bool = typer.Option(False, "--json", help="输出完整 JSON（含 Markdown）"),
+):
+    """用历史数据验证 pulse_v2 的稳定性（只验证，不做阈值寻优）。"""
+    parsed = date.fromisoformat(asof_date) if asof_date else None
+    result = validate_pulse(asof=parsed, write_doc=write_doc)
+    if json_output:
+        typer.echo(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+        return
+    if result.get("status") != "SUCCESS":
+        typer.echo(result)
+        return
+    typer.echo(
+        f"覆盖 {result['days']} 个交易日 · UNKNOWN {result['unknown_ratio']:.1%} · "
+        f"切换 {result['switch_count']} 次 · 基准 {result['benchmark_index']}"
+    )
+    for item in result["states"]:
+        duration = item["average_duration"]
+        typer.echo(
+            f"  {item['state']:<8} {item['days']:>4} 天 ({item['share']:.1%})"
+            + (f" 平均持续 {duration:.1f} 天" if duration else "")
+        )
+    if result.get("doc_path"):
+        typer.echo(f"报告已写入 {result['doc_path']}")
 
 
 @app.command("peer-compare")

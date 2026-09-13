@@ -268,6 +268,22 @@ fee_rank_pct / premium_stability_rank_pct / flow_rank_pct
 费用与跟踪误差取反向口径，因此 **1.0 恒定代表同类最优**。
 只输出分位，不输出综合评分与买卖建议。详见 [`PEER_RESEARCH.md`](PEER_RESEARCH.md)。
 
+## mart.market_norm_daily
+
+```text
+trade_date PK
+margin_balance_ratio   两融余额 / 流通市值
+turnover_ratio         成交额 / 流通市值（注意：与交易所披露的换手率不是同一指标）
+advance_ratio          上涨家数 / (上涨 + 下跌)
+limit_up_ratio         涨停家数 / (上涨 + 下跌 + 平盘)
+float_market_cap / listing_count
+calculation_version    market_norm_v1
+```
+
+标准化市场指标（看盘台"位置"维度用）：绝对水平随市场扩容逐年抬升，
+拿"绝对水平的历史分位"跨期比较会把"市场变大了"读成"资金变多了"。
+任一分量缺失（例如只有单边交易所数据）时对应字段为 NULL。
+
 ## core.index_constituent
 
 ```text

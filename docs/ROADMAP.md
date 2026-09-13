@@ -183,7 +183,12 @@ Phase 3  Benchmark / Peer 相对研究           ✅ 完成
          mart.etf_peer_group + mart.etf_peer_metric_daily（peer_v1）
          etf peer-metrics / peer-compare / overlap、API 三端点、MCP 三个工具
          docs/PEER_RESEARCH.md
-Phase 4  Watchboard 方法学验证（walk-forward）⬜ 未开始
+Phase 4  Watchboard 方法学验证（walk-forward）✅ 完成
+         research/walk_forward.py（状态分布/持续/切换/后续 5-20-60 日收益与回撤分布）
+         jobs/compute_market_norm.py + mart.market_norm_daily（market_norm_v1）
+         research/market_pulse_v3.py（实验版：只换标准化输入，不替换 pulse_v2、不落库）
+         jobs/validate_pulse.py + etf market-norm / etf validate-pulse
+         docs/PULSE_VALIDATION.md（真实 250 个交易日的历史验证报告）
 Phase 5  工程可靠性（uv.lock / CI / 文档漂移自检）✅ 完成
          uv.lock（uv sync --all-extras --frozen 可复现）
          .github/workflows/ci.yml（ruff/mypy/pytest/自检，不联网）
