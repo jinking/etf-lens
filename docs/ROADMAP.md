@@ -227,4 +227,10 @@ Phase 5  工程可靠性（uv.lock / CI / 文档漂移自检）✅ 完成
          .github/workflows/live-smoke.yml（定时跑 -m live，不阻塞 PR）
          ingestion/contracts.py（上游 shape 变化 → ops.quality_issue）
          audit: docs_consistency（命令/版本/迁移表三向核对）
+Phase 6  V2.1.1 研究正确性补丁（Correctness Patch）✅ 完成
+         CoreMetricsService 消费生产 metric_v2 / flow_v2 mart，移除现场重算
+         Peer 历史日快照生成真正 Point-in-Time 安全（Tag/Profile/Index/Flow 严格 as-of 截断）
+         历史研究模式禁止 Current Fallback（缺失返回 NULL / missing_asof）
+         Regime Validation 回撤修正为真实前向最大回撤（forward_max_drawdown）
+         V2.1 总体验收门禁严格校验当前 HEAD 的 CI 状态（STALE/UNKNOWN 显式门禁）
 ```

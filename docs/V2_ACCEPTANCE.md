@@ -10,14 +10,14 @@
 
 | 代码 | 名称 | 跟踪指数 | 规模 | 20日均成交 | 管理费 | 20日收益 | 当前回撤 | 跟踪误差 | 20日份额变化 | 20日估算净申购 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 510300.SH | 沪深300ETF华泰柏瑞 | 000300 沪深300指数 | 1,071.5亿 | — | 0.15 | — | -10.06% | +0.53% | -1.0亿 | -6.7亿 |
-| 588000.SH | 科创50ETF华夏 | 上证科创板50成份指数 | 919.9亿 | — | 0.15 | — | -30.20% | — | 72.1亿 | 118.5亿 |
-| 159915.SZ | 创业板ETF易方达 | 399006 创业板指 | 660.8亿 | — | 0.15 | — | -25.60% | +0.34% | — | — |
-| 510310.SH | 沪深300ETF易方达 | 000300 沪深300指数 | 504.7亿 | — | 0.15 | — | — | +0.53% | -0.3亿 | -1.5亿 |
-| 588200.SH | 科创芯片ETF嘉实 | 上证科创板芯片指数 | 473.4亿 | 29.2亿 | 0.50 | -10.15% | — | — | 11.2亿 | 12.3亿 |
-| 515880.SH | 通信ETF国泰 | 931160 中证全指通信设备指数 | 432.8亿 | 31.6亿 | 0.50 | -2.17% | — | — | 41.0亿 | 27.9亿 |
-| 588080.SH | 科创50ETF易方达 | 上证科创板50成份指数 | 421.9亿 | — | 0.15 | — | -30.22% | — | 27.9亿 | 45.2亿 |
-| 159516.SZ | 半导体设备ETF国泰 | 931743 中证半导体材料设备主题指数 | 407.5亿 | 32.1亿 | 0.50 | -11.99% | — | — | — | — |
+| 510300.SH | 沪深300ETF华泰柏瑞 | 000300 沪深300指数 | 1,071.5亿 | — | 0.15 | — | — | — | — | — |
+| 588000.SH | 科创50ETF华夏 | 上证科创板50成份指数 | 919.9亿 | — | 0.15 | — | — | — | — | — |
+| 159915.SZ | 创业板ETF易方达 | 399006 创业板指 | 660.8亿 | — | 0.15 | — | — | — | — | — |
+| 510310.SH | 沪深300ETF易方达 | 000300 沪深300指数 | 504.7亿 | — | 0.15 | — | — | — | — | — |
+| 588200.SH | 科创芯片ETF嘉实 | 上证科创板芯片指数 | 473.4亿 | 29.2亿 | 0.50 | -10.15% | -36.73% | — | 11.2亿 | 12.3亿 |
+| 515880.SH | 通信ETF国泰 | 931160 中证全指通信设备指数 | 432.8亿 | 31.6亿 | 0.50 | -2.17% | -41.05% | — | 41.0亿 | 27.9亿 |
+| 588080.SH | 科创50ETF易方达 | 上证科创板50成份指数 | 421.9亿 | — | 0.15 | — | — | — | — | — |
+| 159516.SZ | 半导体设备ETF国泰 | 931743 中证半导体材料设备主题指数 | 407.5亿 | 32.1亿 | 0.50 | -11.99% | -39.29% | — | — | — |
 
 ## 2. 主要成分与行业暴露
 
@@ -81,21 +81,21 @@
 ## 5. 数据新鲜度与缺口
 
 - **510300.SH** 研究 as-of=2026-09-11（行情 2026-09-11 · 份额 2026-09-11 · 持仓 2026-06-30）
-  - 缺口：reported_aum=reported_aum_unavailable
+  - 缺口：avg_turnover_amount_20d=insufficient_history、market_return_20d=insufficient_history、market_return_60d=insufficient_history、max_drawdown_60d=insufficient_history、tracking_index=tracking_index_unavailable、share_change_20d=insufficient_history
 - **588000.SH** 研究 as-of=2026-09-11（行情 2026-09-11 · 份额 2026-09-11 · 持仓 2026-06-30）
-  - 缺口：tracking_index=tracking_index_unavailable、tracking_error_60d=tracking_index_unavailable、reported_aum=reported_aum_unavailable
+  - 缺口：avg_turnover_amount_20d=insufficient_history、market_return_20d=insufficient_history、market_return_60d=insufficient_history、max_drawdown_60d=insufficient_history、tracking_index=tracking_index_unavailable、share_change_20d=insufficient_history
 - **159915.SZ** 研究 as-of=2026-09-11（行情 2026-09-11 · 份额 2026-09-11 · 持仓 2026-06-30）
-  - 缺口：share_change_20d=insufficient_history、share_change_pct_20d=insufficient_history、estimated_net_subscription_20d=insufficient_history_or_nav_unavailable、reported_aum=reported_aum_unavailable
+  - 缺口：avg_turnover_amount_20d=insufficient_history、market_return_20d=insufficient_history、market_return_60d=insufficient_history、max_drawdown_60d=insufficient_history、tracking_index=tracking_index_unavailable、share_change_20d=insufficient_history
 - **510310.SH** 研究 as-of=2026-09-11（行情 2026-09-11 · 份额 2026-09-11 · 持仓 2026-06-30）
-  - 缺口：avg_turnover_amount_20d=insufficient_history、market_return_20d=insufficient_history、market_return_60d=insufficient_history、max_drawdown_60d=insufficient_history、reported_aum=reported_aum_unavailable
+  - 缺口：avg_turnover_amount_20d=insufficient_history、market_return_20d=insufficient_history、market_return_60d=insufficient_history、max_drawdown_60d=insufficient_history、tracking_index=tracking_index_unavailable、share_change_20d=insufficient_history
 - **588200.SH** 研究 as-of=2026-09-11（行情 2026-09-11 · 份额 2026-09-11 · 持仓 2026-06-30）
-  - 缺口：market_return_60d=corporate_action_in_window、max_drawdown_60d=corporate_action_in_window、tracking_index=tracking_index_unavailable、tracking_error_60d=tracking_index_unavailable、reported_aum=reported_aum_unavailable
-- **515880.SH** 研究 as-of=2026-09-11（行情 2026-09-11 · 份额 2026-09-11 · 持仓 2026-06-30）
-  - 缺口：market_return_60d=corporate_action_in_window、max_drawdown_60d=corporate_action_in_window、tracking_error_60d=nav_not_adjusted_for_corporate_actions、reported_aum=reported_aum_unavailable
-- **588080.SH** 研究 as-of=2026-09-11（行情 2026-09-11 · 份额 2026-09-11 · 持仓 2026-06-30）
   - 缺口：tracking_index=tracking_index_unavailable、tracking_error_60d=tracking_index_unavailable、reported_aum=reported_aum_unavailable
+- **515880.SH** 研究 as-of=2026-09-11（行情 2026-09-11 · 份额 2026-09-11 · 持仓 2026-06-30）
+  - 缺口：tracking_index=tracking_index_unavailable、tracking_error_60d=tracking_index_unavailable、reported_aum=reported_aum_unavailable
+- **588080.SH** 研究 as-of=2026-09-11（行情 2026-09-11 · 份额 2026-09-11 · 持仓 2026-06-30）
+  - 缺口：avg_turnover_amount_20d=insufficient_history、market_return_20d=insufficient_history、market_return_60d=insufficient_history、max_drawdown_60d=insufficient_history、tracking_index=tracking_index_unavailable、share_change_20d=insufficient_history
 - **159516.SZ** 研究 as-of=2026-09-11（行情 2026-09-11 · 份额 2026-09-11 · 持仓 2026-06-30）
-  - 缺口：market_return_60d=corporate_action_in_window、max_drawdown_60d=corporate_action_in_window、share_change_20d=insufficient_history、share_change_pct_20d=insufficient_history、estimated_net_subscription_20d=insufficient_history_or_nav_unavailable、tracking_error_60d=nav_not_adjusted_for_corporate_actions
+  - 缺口：tracking_index=tracking_index_unavailable、share_change_20d=insufficient_history、share_change_pct_20d=insufficient_history、estimated_net_subscription_20d=insufficient_history_or_nav_unavailable、tracking_error_60d=tracking_index_unavailable、reported_aum=reported_aum_unavailable
 
 ## 5.1 PIT 覆盖
 
