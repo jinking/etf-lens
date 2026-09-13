@@ -198,6 +198,32 @@ fetched_at
 行业不是唯一事实：同一只股票在不同分类标准下行业不同，因此标准单独成列，不做合并。
 cninfo 是 A 股口径，港股等非 A 股标的记为"来源不适用"。
 
+## core.etf_corporate_action
+
+```text
+security_id + action_date + action_type   PK
+split_ratio                # 披露原文，如 "1:2.0000"
+nav_adjustment_factor      # 一次行为的净值和机械倍数（0.5）
+share_adjustment_factor    # 份额机械倍数（2）
+cash_distribution          # 分红：每份派现金额
+source / upstream_source / fetched_at / quality_status / ingestion_run_id
+```
+
+只装**披露来源**的事实（天天基金分红送配页）。价格跳变检测只能发现异常，
+不能创建这里的行——错误一旦被写成事实就会被固化。
+
+## mart.etf_adjusted_daily
+
+```text
+security_id + trade_date + calculation_version   PK
+adjusted_close / adjusted_nav / adjusted_shares
+adjustment_factor          # U(t)，只累积 <= t 的公司行为
+calculated_at
+```
+
+口径 `adjust_v1`（后复权，Point-in-Time 安全）。原始 `core` 事实字段一律不改，
+复权值单独成表。详见 [`CORPORATE_ACTIONS.md`](CORPORATE_ACTIONS.md)。
+
 ## core.index_constituent
 
 ```text

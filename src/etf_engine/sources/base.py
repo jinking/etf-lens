@@ -3,6 +3,7 @@ from datetime import date
 
 from etf_engine.domain.enums import Exchange
 from etf_engine.domain.models import (
+    ETFCorporateAction,
     ETFHolding,
     ETFMaster,
     ETFNav,
@@ -135,6 +136,23 @@ class TradingCalendarSource(ABC):
     @abstractmethod
     def fetch_trading_days(self, start_date: date, end_date: date) -> list[date]:
         raise NotImplementedError
+
+
+class ETFCorporateActionSource(ABC):
+    """公司行为能力接口（拆分 / 折算 / 分红）。
+
+    只允许返回**披露来源**的事实。价格跳变检测属于"发现异常"，
+    不允许用它来创建公司行为事实——一次数据错误会被固化成永久的错误口径。
+    """
+
+    @abstractmethod
+    def fetch_corporate_actions(self, security_id: str) -> list[ETFCorporateAction]:
+        raise NotImplementedError
+
+    def fetch_corporate_actions_with_issues(
+        self, security_id: str
+    ) -> tuple[list[ETFCorporateAction], list[DataQualityIssue]]:
+        return self.fetch_corporate_actions(security_id), []
 
 
 class MarketTurnoverSource(ABC):

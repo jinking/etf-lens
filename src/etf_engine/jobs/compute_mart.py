@@ -3,12 +3,18 @@ import pandas as pd
 from etf_engine.config.settings import settings
 from etf_engine.db.connection import connect
 from etf_engine.domain.quality import error
-from etf_engine.domain.versions import FLOW_VERSION, METRIC_VERSION
+from etf_engine.domain.versions import (
+    FLOW_V2_VERSION,
+    FLOW_VERSION,
+    METRIC_V2_VERSION,
+    METRIC_VERSION,
+)
 from etf_engine.ingestion.run_recorder import IngestionRunRecorder
 from etf_engine.jobs.sync_calendar import ensure_market_calendar
 from etf_engine.repositories.mart_repository import MartRepository
 from etf_engine.repositories.quality_issue_repository import QualityIssueRepository
 from etf_engine.research.flow import calculate_flow, share_change_pct
+from etf_engine.research.flow_v2 import flow_v2_windows
 from etf_engine.research.liquidity import average_turnover_amount
 from etf_engine.research.performance import annualized_volatility, simple_return
 from etf_engine.research.risk import current_drawdown, max_drawdown
@@ -157,6 +163,99 @@ def compute_mart(security_ids: list[str] | None = None) -> dict:
                             "consecutive_share_outflow_days": flow.consecutive_share_outflow_days,
                             "is_estimated": True,
                             "calculation_version": FLOW_VERSION,
+                        }
+                    )
+
+                # ---- v2 口径：基于复权序列（公司行为感知）----
+                # 复权序列由 compute_adjusted_series 预先算好；没有它就跳过 v2，
+                # 绝不退回未复权数据冒充 v2。
+                adjusted_rows = con.execute(
+                    """
+                    SELECT trade_date, adjusted_close, adjusted_nav, adjusted_shares,
+                           adjustment_factor
+                    FROM mart.etf_adjusted_daily
+                    WHERE security_id = ?
+                    ORDER BY trade_date
+                    """,
+                    [sid],
+                ).fetchall()
+                if adjusted_rows:
+                    df_a = pd.DataFrame(
+                        adjusted_rows,
+                        columns=[
+                            "trade_date",
+                            "adjusted_close",
+                            "adjusted_nav",
+                            "adjusted_shares",
+                            "adjustment_factor",
+                        ],
+                    ).set_index("trade_date")
+                    df_a, invalid_a = _drop_non_trading_days(df_a, calendar, "adjusted", sid)
+                    rejected += len(invalid_a)
+                    issues.extend(invalid_a)
+                else:
+                    df_a = pd.DataFrame()
+
+                if not df_a.empty and q_rows:
+                    price_series = df_a["adjusted_close"].dropna()
+                    if not price_series.empty:
+                        metric_records.append(
+                            {
+                                "security_id": sid,
+                                "trade_date": df_a.index[-1],
+                                "return_1d": simple_return(price_series, 1),
+                                "return_5d": simple_return(price_series, 5),
+                                "return_20d": simple_return(price_series, 20),
+                                "return_60d": simple_return(price_series, 60),
+                                "volatility_20d": annualized_volatility(price_series, 20),
+                                "volatility_60d": annualized_volatility(price_series, 60),
+                                "max_drawdown_60d": max_drawdown(price_series, 60),
+                                "max_drawdown_250d": max_drawdown(price_series, 250),
+                                "current_drawdown": current_drawdown(price_series),
+                                "avg_turnover_amount_5d": average_turnover_amount(
+                                    df_q["turnover_amount"], 5
+                                ),
+                                "avg_turnover_amount_20d": average_turnover_amount(
+                                    df_q["turnover_amount"], 20
+                                ),
+                                "avg_turnover_amount_60d": average_turnover_amount(
+                                    df_q["turnover_amount"], 60
+                                ),
+                                "calculation_version": METRIC_V2_VERSION,
+                            }
+                        )
+
+                if not df_a.empty and s_rows:
+                    subscription, flow_status = flow_v2_windows(df_a)
+                    # 资金流行必须落在有份额事实的日期上，避免孤儿派生行。
+                    share_dates = set(df_s.index) if not df_s.empty else set()
+                    candidate_dates = [d for d in df_a.index if d in share_dates]
+                    flow_trade_date = candidate_dates[-1] if candidate_dates else None
+                    if flow_trade_date is not None and flow_trade_date != df_a.index[-1]:
+                        window = df_a.loc[:flow_trade_date]
+                        subscription, flow_status = flow_v2_windows(window)
+                if not df_a.empty and s_rows and flow_trade_date is not None:
+                    flow_records.append(
+                        {
+                            "security_id": sid,
+                            "trade_date": flow_trade_date,
+                            "share_change_1d": subscription.get("share_change_1d"),
+                            "share_change_pct_1d": subscription.get("share_change_pct_1d"),
+                            "share_change_5d": subscription.get("share_change_5d"),
+                            "share_change_20d": subscription.get("share_change_20d"),
+                            "share_change_60d": subscription.get("share_change_60d"),
+                            "share_change_pct_5d": subscription.get("share_change_pct_5d"),
+                            "share_change_pct_20d": subscription.get("share_change_pct_20d"),
+                            "share_change_pct_60d": subscription.get("share_change_pct_60d"),
+                            "estimated_net_subscription_1d": subscription.get("estimated_1d"),
+                            "estimated_net_subscription_5d": subscription.get("estimated_5d"),
+                            "estimated_net_subscription_20d": subscription.get("estimated_20d"),
+                            "estimated_net_subscription_60d": subscription.get("estimated_60d"),
+                            "consecutive_share_inflow_days": subscription.get("inflow_days"),
+                            "consecutive_share_outflow_days": subscription.get("outflow_days"),
+                            "is_estimated": True,
+                            "calculation_version": FLOW_V2_VERSION,
+                            "flow_quality_status": flow_status,
                         }
                     )
 

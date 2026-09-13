@@ -17,6 +17,7 @@ from pathlib import Path
 
 from etf_engine.config.settings import settings
 from etf_engine.db.connection import connect
+from etf_engine.domain.versions import REGISTERED_VERSIONS
 
 SEVERITY_ERROR = "ERROR"
 SEVERITY_WARN = "WARN"
@@ -48,7 +49,7 @@ DATA_RULES = (
     DataRule(
         "mixed_calculation_versions",
         SEVERITY_WARN,
-        "同一张派生表里不应混多个 calculation_version（公式变了要整段重放）",
+        "派生表里出现未登记的口径版本（已登记版本允许并存：历史口径保留 + 新口径并行）",
     ),
     DataRule(
         "zero_substituted_for_unknown",
@@ -77,12 +78,47 @@ DATA_RULES = (
         "研究派生行不得领先于它依赖的事实：mart 的日期若晚于对应 core 事实的"
         "最新日期，说明用到了当时还不存在的数据（Point-in-Time 违规）",
     ),
+    DataRule(
+        "unadjusted_flow_crosses_corporate_action",
+        SEVERITY_ERROR,
+        "资金流行跨越了份额拆分/折算却没走 v2 口径：机械份额变化会被误读成申购",
+    ),
+    DataRule(
+        "adjusted_series_missing_version",
+        SEVERITY_ERROR,
+        "复权序列必须登记 calculation_version，且必须是已登记版本（口径不可无主）",
+    ),
+    DataRule(
+        "adjusted_series_future_action_leak",
+        SEVERITY_ERROR,
+        "复权因子只能用截至当日（含）的公司行为推算：历史时点不得被未来才知道的"
+        "公司行为改写（Point-in-Time 泄漏）",
+    ),
 )
 
 
 def _scalar(con, sql: str, values: list | None = None):
     row = con.execute(sql, values or []).fetchone()
     return row[0] if row else None
+
+
+def _table_exists(con, table: str) -> bool:
+    """表存在才检查。
+
+    迁移尚未执行的库（例如刚升级、还没 `etf db-init`）不应该让自检直接崩掉；
+    这些规则在迁移生效后自然开始工作。
+    """
+    schema, _, name = table.partition(".")
+    return bool(
+        _scalar(
+            con,
+            """
+            SELECT COUNT(*) FROM information_schema.tables
+            WHERE table_schema = ? AND table_name = ?
+            """,
+            [schema, name],
+        )
+    )
 
 
 def _rows(con, sql: str, values: list | None = None) -> list[tuple]:
@@ -187,19 +223,32 @@ def _estimate_version_violations(con) -> list[dict]:
 
 
 def _mixed_version_violations(con) -> list[dict]:
+    """派生表里出现了**未登记**的口径版本。
+
+    V2 起允许同一张表并存多个**已登记**版本（metric_v1 与 metric_v2、
+    flow_v1 与 flow_v2），历史口径保留、新口径并行——"混版本"本身不再是问题。
+    真正危险的是出现没在 ``domain/versions.py`` 登记过的版本：那意味着有人改了
+    公式却没留版本号，历史数据再也解释不清。
+    """
     violations: list[dict] = []
     for table, column in (
         ("mart.etf_flow_daily", "calculation_version"),
         ("mart.etf_metric_daily", "calculation_version"),
         ("mart.market_pulse_daily", "calculation_version"),
     ):
-        rows = _rows(
-            con,
-            f"SELECT {column}, COUNT(*) FROM {table} GROUP BY 1 ORDER BY 2 DESC",
+        if not _table_exists(con, table):
+            continue
+        rows = _rows(con, f"SELECT DISTINCT {column} FROM {table}")
+        unregistered = sorted(
+            value for (value,) in rows if value is not None and value not in REGISTERED_VERSIONS
         )
-        if len(rows) > 1:
-            detail = "、".join(f"{value}×{count}" for value, count in rows)
-            violations.append({"dataset": table, "detail": f"混用口径版本：{detail}"})
+        if unregistered:
+            violations.append(
+                {
+                    "dataset": table,
+                    "detail": "未登记的口径版本：" + "、".join(unregistered),
+                }
+            )
     return violations
 
 
@@ -352,6 +401,164 @@ def _future_data_violations(con) -> list[dict]:
     return violations
 
 
+def _flow_crosses_action_violations(con) -> list[dict]:
+    """有折算的日期缺少 flow_v2 口径 → 机械份额变化只能被当成申赎。
+
+    v1 行是保留的历史口径，本身不算违规；真正的问题是：某个 (标的, 日期)
+    落在折算窗口内，却**没有**对应的 v2 行——那么唯一可读的口径就是被污染的 v1。
+    """
+    if not (
+        _table_exists(con, "core.etf_corporate_action")
+        and _table_exists(con, "mart.etf_flow_daily")
+    ):
+        return []
+    rows = _rows(
+        con,
+        """
+        SELECT f.security_id, f.trade_date, f.calculation_version, a.action_date
+        FROM mart.etf_flow_daily f
+        JOIN core.etf_corporate_action a
+          ON a.security_id = f.security_id
+         AND a.action_date <= f.trade_date
+         AND a.action_date > f.trade_date - INTERVAL 60 DAY
+         AND a.share_adjustment_factor IS NOT NULL
+         AND a.share_adjustment_factor <> 1
+        WHERE f.calculation_version <> 'flow_v2'
+          AND (
+                f.share_change_1d IS NOT NULL
+             OR f.share_change_5d IS NOT NULL
+             OR f.share_change_20d IS NOT NULL
+             OR f.share_change_60d IS NOT NULL
+          )
+          AND NOT EXISTS (
+                SELECT 1 FROM mart.etf_flow_daily v
+                WHERE v.security_id = f.security_id
+                  AND v.trade_date = f.trade_date
+                  AND v.calculation_version = 'flow_v2'
+          )
+        ORDER BY f.trade_date DESC
+        LIMIT 10
+        """,
+    )
+    return [
+        {
+            "dataset": "mart.etf_flow_daily",
+            "detail": (
+                f"{security_id} {trade_date} 用的仍是 {version}，"
+                f"但 {action_date} 有份额折算——机械份额变化会被误读成申赎"
+            ),
+        }
+        for security_id, trade_date, version, action_date in rows
+    ]
+
+
+def _adjusted_version_violations(con) -> list[dict]:
+    """复权序列必须有已登记的口径版本。"""
+    if not _table_exists(con, "mart.etf_adjusted_daily"):
+        return []
+    rows = _rows(
+        con,
+        """
+        SELECT security_id, trade_date, calculation_version
+        FROM mart.etf_adjusted_daily
+        WHERE calculation_version IS NULL OR calculation_version = ''
+        LIMIT 10
+        """,
+    )
+    violations = [
+        {
+            "dataset": "mart.etf_adjusted_daily",
+            "detail": f"{security_id} {trade_date} 缺少 calculation_version",
+        }
+        for security_id, trade_date, _ in rows
+    ]
+
+    known = _rows(
+        con,
+        "SELECT DISTINCT calculation_version FROM mart.etf_adjusted_daily "
+        "WHERE calculation_version IS NOT NULL",
+    )
+    unregistered = sorted({value for (value,) in known if value not in REGISTERED_VERSIONS})
+    violations.extend(
+        {
+            "dataset": "mart.etf_adjusted_daily",
+            "detail": f"复权口径 {value} 未在 domain/versions.py 登记",
+        }
+        for value in unregistered
+    )
+    return violations[:10]
+
+
+def _adjusted_future_leak_violations(con) -> list[dict]:
+    """复权因子只能用截至当日的公司行为推算。
+
+    重新按"只累积 action_date <= trade_date 的行为"算一遍因子，与落库值比对：
+    不一致说明当初用了未来事件（典型是把后复权写成了前复权）。
+
+    范围：只校验**只含份额类行为**的标的。含分红的标的其因子还取决于除息日前
+    收盘价，本规则不重算那部分（避免用另一套逻辑给出假阳性）；这部分由
+    ``tests/unit/test_adjustment_series.py`` 的用例覆盖。
+    """
+    if not (
+        _table_exists(con, "mart.etf_adjusted_daily")
+        and _table_exists(con, "core.etf_corporate_action")
+    ):
+        return []
+    dividend_securities = {
+        row[0]
+        for row in _rows(
+            con,
+            "SELECT DISTINCT security_id FROM core.etf_corporate_action "
+            "WHERE action_type = 'DIVIDEND'",
+        )
+    }
+    adjusted = _rows(
+        con,
+        """
+        SELECT security_id, trade_date, adjustment_factor
+        FROM mart.etf_adjusted_daily
+        ORDER BY security_id, trade_date
+        """,
+    )
+    if not adjusted:
+        return []
+
+    actions = _rows(
+        con,
+        """
+        SELECT security_id, action_date, share_adjustment_factor
+        FROM core.etf_corporate_action
+        WHERE share_adjustment_factor IS NOT NULL AND share_adjustment_factor <> 1
+        ORDER BY security_id, action_date
+        """,
+    )
+    by_security: dict[str, list[tuple]] = {}
+    for security_id, action_date, factor in actions:
+        by_security.setdefault(security_id, []).append((action_date, float(factor)))
+
+    violations: list[dict] = []
+    for security_id, trade_date, stored in adjusted:
+        if security_id in dividend_securities:
+            continue
+        expected = 1.0
+        for action_date, factor in by_security.get(security_id, []):
+            if action_date <= trade_date:
+                expected *= factor
+        if stored is None or abs(float(stored) - expected) > 1e-9:
+            violations.append(
+                {
+                    "dataset": "mart.etf_adjusted_daily",
+                    "detail": (
+                        f"{security_id} {trade_date} 复权因子 {stored} ≠ "
+                        f"按当日可知行为推算的 {expected}"
+                    ),
+                }
+            )
+            if len(violations) >= 10:
+                break
+    return violations
+
+
 _IMPLEMENTATIONS = {
     "rows_on_non_trading_days": _non_trading_day_violations,
     "orphan_mart_rows": _orphan_mart_violations,
@@ -362,6 +569,9 @@ _IMPLEMENTATIONS = {
     "holdings_without_report_date": _holdings_without_report_date,
     "incomplete_market_turnover": _incomplete_turnover_violations,
     "future_data_in_research_snapshot": _future_data_violations,
+    "unadjusted_flow_crosses_corporate_action": _flow_crosses_action_violations,
+    "adjusted_series_missing_version": _adjusted_version_violations,
+    "adjusted_series_future_action_leak": _adjusted_future_leak_violations,
 }
 
 

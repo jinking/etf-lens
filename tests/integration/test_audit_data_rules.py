@@ -162,7 +162,8 @@ def test_holdings_report_date_guard_detects_schema_drift(tmp_path, monkeypatch):
     assert "NOT NULL" in check["violations"][0]["detail"]
 
 
-def test_mixed_calculation_versions_is_caught(tmp_path, monkeypatch):
+def test_registered_versions_may_coexist(tmp_path, monkeypatch):
+    """v1 与 v2 并存是 V2 的设计（历史口径保留 + 新口径并行），不算违规。"""
     _prepare(tmp_path, monkeypatch)
     with connect(settings.database_path) as con:
         con.executemany(
@@ -179,8 +180,26 @@ def test_mixed_calculation_versions_is_caught(tmp_path, monkeypatch):
 
     check = _results()["mixed_calculation_versions"]
 
+    assert check["count"] == 0
+
+
+def test_unregistered_calculation_version_is_caught(tmp_path, monkeypatch):
+    _prepare(tmp_path, monkeypatch)
+    with connect(settings.database_path) as con:
+        con.execute(
+            """
+            INSERT INTO mart.etf_metric_daily
+                (security_id, trade_date, return_1d, calculation_version, calculated_at)
+            VALUES ('588200.SH', ?, 0.1, 'metric_v9', ?)
+            """,
+            [TRADING_DAY, FETCHED_AT],
+        )
+
+    check = _results()["mixed_calculation_versions"]
+
     assert check["count"] == 1
-    assert "metric_v1" in check["violations"][0]["detail"]
+    assert "metric_v9" in check["violations"][0]["detail"]
+    assert check["severity"] == "WARN"
 
 
 def test_single_exchange_turnover_is_warned(tmp_path, monkeypatch):
@@ -249,3 +268,132 @@ def test_mart_rows_within_fact_range_are_clean(tmp_path, monkeypatch):
         )
 
     assert _results()["future_data_in_research_snapshot"]["count"] == 0
+
+
+def test_adjusted_row_without_version_is_flagged(tmp_path, monkeypatch):
+    _prepare(tmp_path, monkeypatch)
+    with connect(settings.database_path) as con:
+        con.execute(
+            """
+            INSERT INTO mart.etf_adjusted_daily
+                (security_id, trade_date, adjustment_factor, calculation_version, calculated_at)
+            VALUES ('588200.SH', ?, 2.0, '', ?)
+            """,
+            [TRADING_DAY, FETCHED_AT],
+        )
+
+    check = _results()["adjusted_series_missing_version"]
+
+    assert check["count"] >= 1
+    assert "缺少 calculation_version" in check["violations"][0]["detail"]
+
+
+def test_adjusted_factor_using_a_future_action_is_flagged(tmp_path, monkeypatch):
+    """历史行用了未来才知道的折算 → Point-in-Time 泄漏。"""
+    _prepare(tmp_path, monkeypatch)
+    with connect(settings.database_path) as con:
+        con.execute(
+            """
+            INSERT INTO core.etf_corporate_action
+                (security_id, action_date, action_type, share_adjustment_factor,
+                 source, fetched_at, quality_status)
+            VALUES ('588200.SH', ?, 'SPLIT', 2.0, 'test', ?, 'PASS')
+            """,
+            [FUTURE_DAY, FETCHED_AT],
+        )
+        # 折算发生在 FUTURE_DAY，但 TRADING_DAY 那一行已经用了因子 2
+        con.execute(
+            """
+            INSERT INTO mart.etf_adjusted_daily
+                (security_id, trade_date, adjustment_factor, calculation_version, calculated_at)
+            VALUES ('588200.SH', ?, 2.0, 'adjust_v1', ?)
+            """,
+            [TRADING_DAY, FETCHED_AT],
+        )
+
+    check = _results()["adjusted_series_future_action_leak"]
+
+    assert check["count"] == 1
+    assert "按当日可知行为推算的 1.0" in check["violations"][0]["detail"]
+
+
+def test_flow_v1_crossing_a_split_is_flagged(tmp_path, monkeypatch):
+    _prepare(tmp_path, monkeypatch)
+    with connect(settings.database_path) as con:
+        con.execute(
+            """
+            INSERT INTO core.etf_corporate_action
+                (security_id, action_date, action_type, share_adjustment_factor,
+                 source, fetched_at, quality_status)
+            VALUES ('588200.SH', ?, 'SPLIT', 2.0, 'test', ?, 'PASS')
+            """,
+            [TRADING_DAY, FETCHED_AT],
+        )
+        con.execute(
+            """
+            INSERT INTO mart.etf_flow_daily
+                (security_id, trade_date, share_change_1d, is_estimated,
+                 calculation_version, calculated_at)
+            VALUES ('588200.SH', ?, 1000.0, TRUE, 'flow_v1', ?)
+            """,
+            [TRADING_DAY, FETCHED_AT],
+        )
+
+    check = _results()["unadjusted_flow_crosses_corporate_action"]
+
+    assert check["count"] == 1
+    assert "机械份额变化会被误读成申赎" in check["violations"][0]["detail"]
+
+
+def test_flow_v2_crossing_a_split_is_accepted(tmp_path, monkeypatch):
+    _prepare(tmp_path, monkeypatch)
+    with connect(settings.database_path) as con:
+        con.execute(
+            """
+            INSERT INTO core.etf_corporate_action
+                (security_id, action_date, action_type, share_adjustment_factor,
+                 source, fetched_at, quality_status)
+            VALUES ('588200.SH', ?, 'SPLIT', 2.0, 'test', ?, 'PASS')
+            """,
+            [TRADING_DAY, FETCHED_AT],
+        )
+        con.execute(
+            """
+            INSERT INTO mart.etf_flow_daily
+                (security_id, trade_date, share_change_1d, is_estimated,
+                 calculation_version, flow_quality_status, calculated_at)
+            VALUES ('588200.SH', ?, 0.0, TRUE, 'flow_v2', 'corporate_action_adjusted', ?)
+            """,
+            [TRADING_DAY, FETCHED_AT],
+        )
+
+    assert _results()["unadjusted_flow_crosses_corporate_action"]["count"] == 0
+
+
+def test_flow_v1_across_a_split_is_only_flagged_without_a_v2_row(tmp_path, monkeypatch):
+    """v1 是保留的历史口径；只有"缺 v2 可读口径"时才算违规。"""
+    _prepare(tmp_path, monkeypatch)
+    with connect(settings.database_path) as con:
+        con.execute(
+            """
+            INSERT INTO core.etf_corporate_action
+                (security_id, action_date, action_type, share_adjustment_factor,
+                 source, fetched_at, quality_status)
+            VALUES ('588200.SH', ?, 'SPLIT', 2.0, 'test', ?, 'PASS')
+            """,
+            [TRADING_DAY, FETCHED_AT],
+        )
+        con.executemany(
+            """
+            INSERT INTO mart.etf_flow_daily
+                (security_id, trade_date, share_change_1d, is_estimated,
+                 calculation_version, calculated_at)
+            VALUES ('588200.SH', ?, ?, TRUE, ?, ?)
+            """,
+            [
+                (TRADING_DAY, 1000.0, "flow_v1", FETCHED_AT),
+                (TRADING_DAY, 0.0, "flow_v2", FETCHED_AT),
+            ],
+        )
+
+    assert _results()["unadjusted_flow_crosses_corporate_action"]["count"] == 0

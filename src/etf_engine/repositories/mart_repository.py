@@ -88,6 +88,7 @@ class MartRepository:
                     r.get("consecutive_share_outflow_days"),
                     r.get("is_estimated", True),
                     r.get("calculation_version", FLOW_VERSION),
+                    r.get("flow_quality_status"),
                     now,
                 )
             )
@@ -100,8 +101,8 @@ class MartRepository:
             estimated_net_subscription_1d, estimated_net_subscription_5d,
             estimated_net_subscription_20d, estimated_net_subscription_60d,
             consecutive_share_inflow_days, consecutive_share_outflow_days,
-            is_estimated, calculation_version, calculated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            is_estimated, calculation_version, flow_quality_status, calculated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT (security_id, trade_date, calculation_version) DO UPDATE SET
             share_change_1d = EXCLUDED.share_change_1d,
             share_change_pct_1d = EXCLUDED.share_change_pct_1d,
@@ -118,6 +119,9 @@ class MartRepository:
             consecutive_share_inflow_days = EXCLUDED.consecutive_share_inflow_days,
             consecutive_share_outflow_days = EXCLUDED.consecutive_share_outflow_days,
             is_estimated = EXCLUDED.is_estimated,
+            flow_quality_status = COALESCE(
+                EXCLUDED.flow_quality_status, mart.etf_flow_daily.flow_quality_status
+            ),
             calculated_at = EXCLUDED.calculated_at
         """
 

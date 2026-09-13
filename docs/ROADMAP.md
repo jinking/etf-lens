@@ -169,7 +169,14 @@ Phase 1  Point-in-Time 研究上下文            ✅ 完成
          audit：research_sql_must_be_asof_bounded、future_data_in_research_snapshot
          docs/POINT_IN_TIME.md
 
-Phase 2  Corporate Actions 与复权序列        ⬜ 未开始（当前靠"拒绝计算"防错）
+Phase 2  Corporate Actions 与复权序列        ✅ 完成
+         core.etf_corporate_action（披露口径，绝不由价格跳变推断）
+         mart.etf_adjusted_daily（后复权，Point-in-Time 安全，adjust_v1）
+         metric_v2 / flow_v2（份额变化剔除机械放大）
+         tracking_difference + 基准口径分类（未知即 NULL）
+         audit：unadjusted_flow_crosses_corporate_action、
+                adjusted_series_missing_version、adjusted_series_future_action_leak
+         docs/CORPORATE_ACTIONS.md
 Phase 3  Benchmark / Peer 相对研究           ⬜ 未开始
 Phase 4  Watchboard 方法学验证（walk-forward）⬜ 未开始
 Phase 5  工程可靠性（uv.lock / CI / 文档漂移自检）⬜ 未开始

@@ -14,9 +14,11 @@ from etf_engine.jobs.backfill_flow import backfill_flow_history
 from etf_engine.jobs.backfill_history import backfill_history
 from etf_engine.jobs.backfill_index_history import backfill_index_history
 from etf_engine.jobs.backfill_nav import backfill_nav
+from etf_engine.jobs.compute_adjusted_series import compute_adjusted_series
 from etf_engine.jobs.compute_mart import compute_mart
 from etf_engine.jobs.compute_pulse import backfill_pulse_history, compute_market_pulse
 from etf_engine.jobs.sync_calendar import sync_calendar
+from etf_engine.jobs.sync_corporate_actions import sync_corporate_actions
 from etf_engine.jobs.sync_fund_profile import sync_fund_profile
 from etf_engine.jobs.sync_holdings import sync_holdings
 from etf_engine.jobs.sync_index import sync_index_catalog, sync_index_details, sync_index_map
@@ -239,6 +241,30 @@ def sync_fund_profile_cmd(
             security_ids=security_ids or None, limit=limit, sleep_seconds=sleep_seconds
         )
     )
+
+
+@app.command("sync-corporate-actions")
+def sync_corporate_actions_cmd(
+    security_ids: list[str] = typer.Option(
+        None, "--security-id", "-s", help="指定待同步公司行为的 ETF"
+    ),
+    limit: int = typer.Option(50, "--limit", "-n", help="本次最多处理多少只 ETF"),
+    sleep_seconds: float = typer.Option(0.3, "--sleep", help="每只 ETF 之间的间隔秒数"),
+):
+    """同步拆分/折算/分红事实（披露口径，不由价格跳变推断）。"""
+    typer.echo(
+        sync_corporate_actions(
+            security_ids=security_ids or None, limit=limit, sleep_seconds=sleep_seconds
+        )
+    )
+
+
+@app.command("compute-adjusted-series")
+def compute_adjusted_series_cmd(
+    security_ids: list[str] = typer.Option(None, "--security-id", "-s", help="指定要复权的 ETF"),
+):
+    """构建复权序列（后复权，Point-in-Time 安全）。"""
+    typer.echo(compute_adjusted_series(security_ids=security_ids or None))
 
 
 @app.command("sync-index-map")

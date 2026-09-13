@@ -20,6 +20,9 @@ EXPECTED_RULES = {
     "holdings_without_report_date": "ERROR",
     "incomplete_market_turnover": "WARN",
     "future_data_in_research_snapshot": "ERROR",
+    "unadjusted_flow_crosses_corporate_action": "ERROR",
+    "adjusted_series_missing_version": "ERROR",
+    "adjusted_series_future_action_leak": "ERROR",
 }
 
 

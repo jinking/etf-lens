@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from etf_engine.sources.akshare.activity import AkshareMarketActivitySource
 from etf_engine.sources.akshare.calendar import AkshareTradingCalendarSource
+from etf_engine.sources.akshare.corporate_action import EastmoneyFundActionSource
 from etf_engine.sources.akshare.fund_issuance import AkshareFundIssuanceSource
 from etf_engine.sources.akshare.fund_profile import AkshareFundProfileSource
 from etf_engine.sources.akshare.history import AkshareETFHistorySource
@@ -49,6 +50,7 @@ class SourceRegistry:
     index_quote_source = AkshareIndexQuoteSource
     index_benchmark_source = AkshareFundProfileSource
     fund_profile_source = AkshareFundProfileSource
+    corporate_action_source = EastmoneyFundActionSource
     share_sources = (SSEETFShareSource, SZSEETFShareSource)
 
     #: 看盘台（docs/WATCHBOARD.md）市场层能力。

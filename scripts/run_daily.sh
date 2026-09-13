@@ -53,6 +53,8 @@ run_step "市场层" etf sync-market --backfill-days 1
 
 if [ "$SKIP_HEAVY" -eq 0 ]; then
   run_step "基金档案" etf sync-fund-profile --limit 20
+  run_step "公司行为" etf sync-corporate-actions --limit 20
+  run_step "复权序列" etf compute-adjusted-series
 fi
 
 run_step "研究指标" etf compute-mart

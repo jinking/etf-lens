@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 
-from .enums import Exchange, QualityStatus
+from .enums import CorporateActionType, Exchange, QualityStatus
 
 
 class SourceMeta(BaseModel):
@@ -272,3 +272,34 @@ class FundIssuance(BaseModel):
     established_date: date | None = None
     manager: str | None = None
     source_meta: SourceMeta
+
+
+class ETFCorporateAction(BaseModel):
+    """ETF 公司行为事实（拆分/折算/分红）。
+
+    ``share_adjustment_factor`` / ``nav_adjustment_factor`` 描述一次行为的机械倍数：
+    1:2 份额分拆 → 份额 ×2、净值 ÷2。分红用 ``cash_distribution`` 表示每份派现。
+    """
+
+    security_id: str
+    action_date: date
+    action_type: CorporateActionType
+    split_ratio: str | None = None
+    nav_adjustment_factor: Decimal | None = None
+    share_adjustment_factor: Decimal | None = None
+    cash_distribution: Decimal | None = None
+    source_meta: SourceMeta
+
+
+class AdjustedDailyPoint(BaseModel):
+    """复权序列的一个点（``mart.etf_adjusted_daily``）。"""
+
+    security_id: str
+    trade_date: date
+    adjusted_close: Decimal | None = None
+    adjusted_nav: Decimal | None = None
+    adjusted_shares: Decimal | None = None
+    #: 基金层面因子（净值/份额）：折算日当天生效。
+    adjustment_factor: Decimal
+    #: 价格因子：折算日的成交价仍是折算前价格，次一交易日才生效。
+    price_adjustment_factor: Decimal | None = None
