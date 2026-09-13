@@ -146,6 +146,27 @@ def test_margin_missing_column_raises():
         raise AssertionError("缺列时应当报错")
 
 
+def test_margin_zero_balance_is_a_placeholder_not_a_fact():
+    """上游把缺失写成 0（实测 2024-08-08 深市）：0 不能当成事实落库。"""
+    frame = pd.DataFrame(
+        [
+            {
+                "日期": "2024-08-08",
+                "融资买入额": 0.0,
+                "融资余额": 0.0,
+                "融券余量": None,
+                "融券余额": 0.0,
+                "融资融券余额": 0.0,
+            }
+        ]
+    )
+
+    rows, issues = parse_margin_frame(frame, exchange=Exchange.SZSE, fetched_at=FETCHED_AT)
+
+    assert rows == [], "0 不是两融余额，不入库"
+    assert [issue.rule_name for issue in issues] == ["margin_balance_zero_substituted"]
+
+
 def test_valuation_parsing_keeps_source_quantiles():
     frame = pd.DataFrame(
         [

@@ -57,6 +57,17 @@ def parse_margin_frame(
         if balance is None:
             issues.append(warn("margin_balance_null", f"{exchange} {trade_date} 融资融券余额为空"))
             continue
+        if balance <= 0:
+            # 上游偶尔把缺失写成 0（实测 2024-08-08 深市）。0 不是事实：
+            # 一个市场的两融余额不可能归零，落库只会污染合计与分位，
+            # 因此记 issue 后跳过——这正是自检规则 zero_substituted_for_unknown 盯的形态。
+            issues.append(
+                warn(
+                    "margin_balance_zero_substituted",
+                    f"{exchange} {trade_date} 融资融券余额={balance}（上游用 0 顶替缺失）",
+                )
+            )
+            continue
         rows.append(
             MarginBalance(
                 trade_date=trade_date,
