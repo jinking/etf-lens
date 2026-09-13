@@ -103,6 +103,7 @@ def seeded(tmp_path, monkeypatch):
 
 def test_tool_registry_covers_the_documented_tools():
     assert set(tool_registry()) == {
+        # AGENTS.md / TECHNICAL §11 列出的基础工具
         "search_etfs",
         "get_etf_profile",
         "get_etf_quote",
@@ -111,7 +112,12 @@ def test_tool_registry_covers_the_documented_tools():
         "get_etf_holdings",
         "compare_etfs",
         "screen_etfs",
+        # 看盘台（V2 Phase 4 前置）
         "get_market_pulse",
+        # V2 Phase 3：Benchmark / Peer 相对研究
+        "compare_peer_etfs",
+        "get_tracking_quality",
+        "compare_exposure_overlap",
     }
 
 

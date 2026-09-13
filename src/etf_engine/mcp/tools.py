@@ -22,6 +22,7 @@ from etf_engine.repositories.master_repository import MasterRepository
 from etf_engine.repositories.tag_repository import TagRepository
 from etf_engine.services.core_metrics_service import ETFCoreMetricsService
 from etf_engine.services.etf_service import ETFService
+from etf_engine.services.peer_service import PeerService
 from etf_engine.services.research_service import ResearchService
 from etf_engine.services.watchboard_service import WatchboardService
 
@@ -142,6 +143,21 @@ def get_market_pulse(asof_date: date | None = None) -> dict:
     return payload
 
 
+def compare_peer_etfs(security_ids: list[str], asof_date: date | None = None) -> list[dict]:
+    """同类比较：五个研究维度（基础规模/流动性/跟踪质量/成本/资金与拥挤度）。"""
+    return PeerService().compare_peers(security_ids, asof_date=asof_date)
+
+
+def get_tracking_quality(security_ids: list[str], asof_date: date | None = None) -> list[dict]:
+    """跟踪质量：同类中的跟踪误差分位（数值越低越好 → 分位越高越好）。"""
+    return PeerService().tracking_quality(security_ids, asof_date=asof_date)
+
+
+def compare_exposure_overlap(security_ids: list[str]) -> dict:
+    """持仓重合度：判断两只 ETF 是否高度重复。"""
+    return PeerService().exposure_overlap(security_ids)
+
+
 TOOL_FUNCTIONS: dict[str, Callable[..., Any]] = {
     "search_etfs": search_etfs,
     "get_etf_profile": get_etf_profile,
@@ -152,4 +168,7 @@ TOOL_FUNCTIONS: dict[str, Callable[..., Any]] = {
     "compare_etfs": compare_etfs,
     "screen_etfs": screen_etfs,
     "get_market_pulse": get_market_pulse,
+    "compare_peer_etfs": compare_peer_etfs,
+    "get_tracking_quality": get_tracking_quality,
+    "compare_exposure_overlap": compare_exposure_overlap,
 }

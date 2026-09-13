@@ -16,6 +16,7 @@ from etf_engine.jobs.backfill_index_history import backfill_index_history
 from etf_engine.jobs.backfill_nav import backfill_nav
 from etf_engine.jobs.compute_adjusted_series import compute_adjusted_series
 from etf_engine.jobs.compute_mart import compute_mart
+from etf_engine.jobs.compute_peer_metrics import compute_peer_metrics
 from etf_engine.jobs.compute_pulse import backfill_pulse_history, compute_market_pulse
 from etf_engine.jobs.sync_calendar import sync_calendar
 from etf_engine.jobs.sync_corporate_actions import sync_corporate_actions
@@ -32,6 +33,7 @@ from etf_engine.mcp.server import run_stdio
 from etf_engine.repositories.trading_calendar_repository import TradingCalendarRepository
 from etf_engine.services.core_metrics_service import ETFCoreMetricsService
 from etf_engine.services.etf_service import ETFService
+from etf_engine.services.peer_service import PeerService
 from etf_engine.services.research_service import ResearchService
 from etf_engine.services.watchboard_service import WatchboardService
 
@@ -92,6 +94,58 @@ def mcp():
     except RuntimeError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
+
+
+@app.command("peer-metrics")
+def peer_metrics_cmd(
+    asof_date: str = typer.Option(None, "--asof", help="as-of 日期（默认取最新可得）"),
+):
+    """计算同类分组与同类分位（peer_v1）。"""
+    parsed = date.fromisoformat(asof_date) if asof_date else None
+    typer.echo(compute_peer_metrics(asof=parsed))
+
+
+@app.command("peer-compare")
+def peer_compare_cmd(
+    security_ids: list[str] = typer.Argument(..., help="待比较的 ETF 代码"),
+    asof_date: str = typer.Option(None, "--asof", help="as-of 日期"),
+):
+    """按五个研究维度给出同类分位（不是综合评分）。"""
+    parsed = date.fromisoformat(asof_date) if asof_date else None
+    rows = PeerService().compare_peers(security_ids, asof_date=parsed)
+    if not rows:
+        typer.echo("未找到可比数据。")
+        return
+    for row in rows:
+        typer.echo(
+            f"[{row['security_id']}] 同类: {row['peer_group_kind']} "
+            f"({row['peer_group_id']}, n={row['peer_count']}) as-of={row['asof_date']}"
+        )
+        for dimension, metrics in row["dimensions"].items():
+            parts = [
+                f"{key}={'—' if value is None else f'{value * 100:.0f}%'}"
+                for key, value in metrics.items()
+            ]
+            typer.echo(f"    {dimension}: " + " ".join(parts))
+
+
+@app.command("overlap")
+def overlap_cmd(security_ids: list[str] = typer.Argument(..., help="至少两只 ETF")):
+    """两两持仓重合度（回答"看起来不同，是否高度重复"）。"""
+    result = PeerService().exposure_overlap(security_ids)
+    if not result["pairs"]:
+        typer.echo("需要至少两只可比较的 ETF。")
+        return
+    for pair in result["pairs"]:
+        typer.echo(
+            f"{pair['left']} × {pair['right']} | "
+            f"共同持仓 {len(pair['common_holdings'])} 只 | "
+            f"重合度={pair['holding_overlap_ratio']} | "
+            f"加权重合={pair['weighted_overlap']} | "
+            f"Top10 重合={pair['top10_overlap']} | "
+            f"行业重合={pair['industry_overlap']}"
+        )
+    typer.echo(f"覆盖：{result['coverage']}（持仓只数）")
 
 
 @app.command("sync-master")

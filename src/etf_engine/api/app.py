@@ -21,6 +21,7 @@ from etf_engine.jobs.sync_quotes import sync_quotes
 from etf_engine.jobs.sync_shares import sync_shares
 from etf_engine.services.core_metrics_service import ETFCoreMetricsService
 from etf_engine.services.etf_service import ETFService
+from etf_engine.services.peer_service import PeerService
 from etf_engine.services.research_service import ResearchService
 from etf_engine.services.watchboard_service import WatchboardService
 
@@ -32,6 +33,7 @@ app = FastAPI(
 service = ETFService()
 core_metrics_service = ETFCoreMetricsService()
 research_service = ResearchService()
+peer_service = PeerService()
 watchboard_service = WatchboardService()
 WEB_ROOT = Path(__file__).resolve().parents[1] / "web"
 
@@ -315,6 +317,43 @@ def list_themes(
             "count": len(data),
             "asof_date": asof_date.isoformat() if asof_date else None,
         },
+        "errors": [],
+    }
+
+
+@app.get("/api/v1/research/peer-compare")
+def compare_peers(
+    security_ids: str = Query(..., description="逗号分隔的ETF代码列表"),
+    asof_date: date | None = None,
+):
+    """五个研究维度的同类分位（不是综合评分，也不含买卖建议）。"""
+    ids = [sid.strip() for sid in security_ids.split(",") if sid.strip()]
+    return {
+        "data": peer_service.compare_peers(ids, asof_date=asof_date),
+        "meta": {"asof_date": asof_date.isoformat() if asof_date else None},
+        "errors": [],
+    }
+
+
+@app.get("/api/v1/research/tracking-quality")
+def tracking_quality(
+    security_ids: str = Query(..., description="逗号分隔的ETF代码列表"),
+    asof_date: date | None = None,
+):
+    ids = [sid.strip() for sid in security_ids.split(",") if sid.strip()]
+    return {
+        "data": peer_service.tracking_quality(ids, asof_date=asof_date),
+        "meta": {"asof_date": asof_date.isoformat() if asof_date else None},
+        "errors": [],
+    }
+
+
+@app.post("/api/v1/research/overlap")
+def exposure_overlap(security_ids: list[str]):
+    """两两持仓重合度。"""
+    return {
+        "data": peer_service.exposure_overlap(security_ids),
+        "meta": {"count": len(security_ids)},
         "errors": [],
     }
 

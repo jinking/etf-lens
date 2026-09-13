@@ -58,6 +58,7 @@ if [ "$SKIP_HEAVY" -eq 0 ]; then
 fi
 
 run_step "研究指标" etf compute-mart
+run_step "同类分位" etf peer-metrics
 run_step "看盘三层状态" etf pulse
 # 自检放在最后：架构约束 + 数据不变量，有 ERROR 就以非 0 退出码上报
 run_step "自检" etf audit

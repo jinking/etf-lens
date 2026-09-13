@@ -177,7 +177,12 @@ Phase 2  Corporate Actions 与复权序列        ✅ 完成
          audit：unadjusted_flow_crosses_corporate_action、
                 adjusted_series_missing_version、adjusted_series_future_action_leak
          docs/CORPORATE_ACTIONS.md
-Phase 3  Benchmark / Peer 相对研究           ⬜ 未开始
+Phase 3  Benchmark / Peer 相对研究           ✅ 完成
+         research/benchmark.py（20/60/250 窗口的跟踪差异/误差 + 两端收益 + 折溢价稳定性）
+         research/peer.py（分组优先级 + 方向统一的分位）、research/overlap.py（四种重合度口径）
+         mart.etf_peer_group + mart.etf_peer_metric_daily（peer_v1）
+         etf peer-metrics / peer-compare / overlap、API 三端点、MCP 三个工具
+         docs/PEER_RESEARCH.md
 Phase 4  Watchboard 方法学验证（walk-forward）⬜ 未开始
 Phase 5  工程可靠性（uv.lock / CI / 文档漂移自检）⬜ 未开始
 ```
