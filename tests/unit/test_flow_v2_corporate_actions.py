@@ -1,12 +1,12 @@
 """flow_v2：折算造成的机械份额变化不得被当成申赎。"""
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 import pandas as pd
 
-from etf_engine.domain.enums import CorporateActionType
-from etf_engine.domain.models import ETFCorporateAction
+from etf_engine.domain.enums import CorporateActionType, QualityStatus
+from etf_engine.domain.models import ETFCorporateAction, SourceMeta
 from etf_engine.research.flow_v2 import (
     FLOW_QUALITY_ADJUSTED,
     FLOW_QUALITY_CLEAN,
@@ -15,9 +15,13 @@ from etf_engine.research.flow_v2 import (
     flow_v2_windows,
 )
 
-from .test_adjustment_series import _meta
-
 D1, D2, D3 = date(2026, 7, 1), date(2026, 7, 2), date(2026, 7, 3)
+FETCHED_AT = datetime(2026, 9, 12, 18, 0)
+
+
+def _meta() -> SourceMeta:
+    """本文件自用的来源元数据：测试之间不互相 import，避免依赖包结构。"""
+    return SourceMeta(source="test", fetched_at=FETCHED_AT, quality_status=QualityStatus.PASS)
 
 
 def _split(action_date: date) -> ETFCorporateAction:
