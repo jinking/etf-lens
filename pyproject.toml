@@ -44,6 +44,7 @@ packages = ["src/etf_engine"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = [
     "live: tests that call live upstream data sources",
 ]

@@ -77,7 +77,7 @@ def _git_sha() -> str:
     return out if code == 0 else "UNKNOWN"
 
 
-def _ci_status() -> tuple[str, str]:
+def _ci_status() -> tuple[str, str, str | None]:
     """最近一次普通 CI 的状态。没有 gh / 没登录 / 没网络时如实报 UNKNOWN。"""
     code, out = _run(
         [
@@ -93,17 +93,59 @@ def _ci_status() -> tuple[str, str]:
         ]
     )
     if code != 0 or not out:
-        return "UNKNOWN", "本地未安装 gh / 未登录 / 无网络，请到 GitHub Actions 页面确认"
+        return "UNKNOWN", "本地未安装 gh / 未登录 / 无网络，请到 GitHub Actions 页面确认", None
     try:
         runs = json.loads(out)
     except json.JSONDecodeError:
-        return "UNKNOWN", out[:200]
+        return "UNKNOWN", out[:200], None
     if not runs:
-        return "UNKNOWN", "还没有 CI run 记录"
+        return "UNKNOWN", "还没有 CI run 记录", None
     run = runs[0]
     status = run.get("conclusion") or run.get("status") or "UNKNOWN"
-    head = str(run.get("headSha", ""))[:7]
-    return str(status), f"{run.get('url', '')}（head {head}）"
+    head_sha = run.get("headSha")
+    head = str(head_sha or "")[:7]
+    return str(status), f"{run.get('url', '')}（head {head}）", head_sha
+
+
+def compute_acceptance_status(
+    *,
+    local_pass: bool,
+    ci_status: str,
+    current_sha: str,
+    ci_head_sha: str | None,
+    skip_ci: bool = False,
+    allow_ci_unknown: bool = False,
+) -> tuple[str, str]:
+    """计算 V2.1 Acceptance 最终整体状态与 CI 解释。
+
+    返回 (overall_status, effective_ci_status)
+    - overall_status: "PASS" | "PARTIAL" | "FAIL"
+    - effective_ci_status: "SUCCESS" | "FAILURE" | "STALE" | "UNKNOWN" | "SKIPPED"
+    """
+    if not local_pass:
+        return "FAIL", ci_status
+
+    if skip_ci:
+        return "PARTIAL", "SKIPPED"
+
+    status_upper = ci_status.strip().upper()
+
+    if status_upper in {"FAILURE", "FAILED", "ERROR"}:
+        return "FAIL", "FAILURE"
+
+    if status_upper in {"SUCCESS", "PASS", "COMPLETED"}:
+        if ci_head_sha and current_sha and current_sha != "UNKNOWN":
+            c_sha = current_sha.lower()
+            h_sha = ci_head_sha.lower()
+            if c_sha.startswith(h_sha) or h_sha.startswith(c_sha):
+                return "PASS", "SUCCESS"
+            return "PARTIAL", "STALE"
+        return "PARTIAL", "STALE"
+
+    if allow_ci_unknown:
+        return "PASS", ci_status
+
+    return "PARTIAL", "UNKNOWN"
 
 
 def run_cases() -> list[dict]:
@@ -126,8 +168,14 @@ def run_cases() -> list[dict]:
     return results
 
 
-def render(results: list[dict], *, ci_status: str, ci_detail: str, sha: str) -> str:
-    overall = "PASS" if all(item["passed"] for item in results) else "FAIL"
+def render(
+    results: list[dict],
+    *,
+    ci_status: str,
+    ci_detail: str,
+    sha: str,
+    overall: str,
+) -> str:
     lines = [
         "# V2.1 总体验收（Case A–E）",
         "",
@@ -187,14 +235,38 @@ def main() -> None:
     parser.add_argument("--write-doc", action="store_true")
     parser.add_argument("--doc", default=str(DEFAULT_DOC))
     parser.add_argument("--skip-ci", action="store_true", help="不查询 gh（离线环境）")
+    parser.add_argument(
+        "--allow-ci-unknown",
+        action="store_true",
+        help="在 CI 状态为 UNKNOWN 时仍允许整体判定为 PASS（显式放宽）",
+    )
     args = parser.parse_args()
 
     results = run_cases()
+    local_pass = all(item["passed"] for item in results)
+    current_sha = _git_sha()
+
     if args.skip_ci:
-        ci_status, ci_detail = "UNKNOWN", "本次运行显式跳过（--skip-ci）"
+        ci_status, ci_detail, ci_head_sha = "UNKNOWN", "本次运行显式跳过（--skip-ci）", None
     else:
-        ci_status, ci_detail = _ci_status()
-    markdown = render(results, ci_status=ci_status, ci_detail=ci_detail, sha=_git_sha())
+        ci_status, ci_detail, ci_head_sha = _ci_status()
+
+    overall, _ = compute_acceptance_status(
+        local_pass=local_pass,
+        ci_status=ci_status,
+        current_sha=current_sha,
+        ci_head_sha=ci_head_sha,
+        skip_ci=args.skip_ci,
+        allow_ci_unknown=args.allow_ci_unknown,
+    )
+
+    markdown = render(
+        results,
+        ci_status=ci_status,
+        ci_detail=ci_detail,
+        sha=current_sha,
+        overall=overall,
+    )
 
     if args.write_doc:
         target = Path(args.doc)
@@ -204,7 +276,7 @@ def main() -> None:
     else:
         print(markdown)
 
-    if not all(item["passed"] for item in results):
+    if overall == "FAIL":
         raise SystemExit(1)
 
 
