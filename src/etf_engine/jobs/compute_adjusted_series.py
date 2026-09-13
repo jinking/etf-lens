@@ -20,29 +20,28 @@ from etf_engine.repositories.quality_issue_repository import QualityIssueReposit
 from etf_engine.research.adjustment import AdjustmentInputs, build_adjusted_series
 
 
-def _facts(security_id: str) -> tuple[list, list, list]:
-    with connect(settings.database_path) as con:
-        closes = con.execute(
-            """
-            SELECT trade_date, close FROM core.etf_quote_daily
-            WHERE security_id = ? ORDER BY trade_date
-            """,
-            [security_id],
-        ).fetchall()
-        navs = con.execute(
-            """
-            SELECT nav_date, unit_nav FROM core.etf_nav_daily
-            WHERE security_id = ? ORDER BY nav_date
-            """,
-            [security_id],
-        ).fetchall()
-        shares = con.execute(
-            """
-            SELECT trade_date, shares FROM core.etf_share_daily
-            WHERE security_id = ? ORDER BY trade_date
-            """,
-            [security_id],
-        ).fetchall()
+def _facts(con, security_id: str) -> tuple[list, list, list]:
+    closes = con.execute(
+        """
+        SELECT trade_date, close FROM core.etf_quote_daily
+        WHERE security_id = ? ORDER BY trade_date
+        """,
+        [security_id],
+    ).fetchall()
+    navs = con.execute(
+        """
+        SELECT nav_date, unit_nav FROM core.etf_nav_daily
+        WHERE security_id = ? ORDER BY nav_date
+        """,
+        [security_id],
+    ).fetchall()
+    shares = con.execute(
+        """
+        SELECT trade_date, shares FROM core.etf_share_daily
+        WHERE security_id = ? ORDER BY trade_date
+        """,
+        [security_id],
+    ).fetchall()
     return closes, navs, shares
 
 
@@ -83,77 +82,98 @@ def compute_adjusted_series(
     quality = QualityIssueRepository()
     recorder = IngestionRunRecorder()
 
-    if security_ids:
-        targets: list[str] = []
-        for item in security_ids:
-            try:
-                targets.append(SecurityId.parse(item).value)
-            except ValueError:
-                continue
-    else:
-        with connect(settings.database_path) as con:
-            targets = [
-                row[0]
-                for row in con.execute(
-                    "SELECT DISTINCT security_id FROM core.etf_quote_daily ORDER BY 1"
-                ).fetchall()
-            ]
-
-    if not targets:
-        return {"status": "SKIPPED", "reason": "没有可复权的标的"}
-
     run_id = recorder.start("etf_adjusted_series", "adjust_v1", asof_date)
     points_written = 0
     issues: list[DataQualityIssue] = []
     funds_with_actions = 0
+    all_points = []
 
-    for security_id in targets:
-        closes, navs, shares = _facts(security_id)
-        if not closes and not navs and not shares:
-            continue
-        action_rows = actions_repository.actions_for(security_id, asof_date=asof_date)
-        actions = _to_actions(action_rows)
-        if actions:
-            funds_with_actions += 1
-        elif any(close is not None for _, close in closes):
-            # 没有公司行为事实的标的也要有序列（因子恒为 1），
-            # 但若原始序列存在未解释的跳变，研究层会拒绝计算（见研究层守卫）。
-            pass
+    try:
+        with connect(settings.database_path) as con:
+            if security_ids:
+                targets: list[str] = []
+                for item in security_ids:
+                    try:
+                        targets.append(SecurityId.parse(item).value)
+                    except ValueError:
+                        continue
+            else:
+                targets = [
+                    row[0]
+                    for row in con.execute(
+                        "SELECT DISTINCT security_id FROM core.etf_quote_daily ORDER BY 1"
+                    ).fetchall()
+                ]
 
-        points, point_issues = build_adjusted_series(
-            AdjustmentInputs(
-                security_id=security_id,
-                closes=[
-                    (row[0], Decimal(str(row[1]))) if row[1] is not None else (row[0], None)
-                    for row in closes
-                ],
-                navs=[
-                    (row[0], Decimal(str(row[1]))) if row[1] is not None else (row[0], None)
-                    for row in navs
-                ],
-                shares=[
-                    (row[0], Decimal(str(row[1]))) if row[1] is not None else (row[0], None)
-                    for row in shares
-                ],
-                actions=actions,
-            )
+            if not targets:
+                recorder.finish(
+                    run_id,
+                    status="SKIPPED",
+                    rows_fetched=0,
+                    rows_written=0,
+                    rows_rejected=0,
+                )
+                return {"status": "SKIPPED", "reason": "没有可复权的标的"}
+
+            for security_id in targets:
+                closes, navs, shares = _facts(con, security_id)
+                if not closes and not navs and not shares:
+                    continue
+                action_rows = actions_repository.actions_for(
+                    security_id, asof_date=asof_date, con=con
+                )
+                actions = _to_actions(action_rows)
+                if actions:
+                    funds_with_actions += 1
+                elif any(close is not None for _, close in closes):
+                    pass
+
+                points, point_issues = build_adjusted_series(
+                    AdjustmentInputs(
+                        security_id=security_id,
+                        closes=[
+                            (row[0], Decimal(str(row[1]))) if row[1] is not None else (row[0], None)
+                            for row in closes
+                        ],
+                        navs=[
+                            (row[0], Decimal(str(row[1]))) if row[1] is not None else (row[0], None)
+                            for row in navs
+                        ],
+                        shares=[
+                            (row[0], Decimal(str(row[1]))) if row[1] is not None else (row[0], None)
+                            for row in shares
+                        ],
+                        actions=actions,
+                    )
+                )
+                issues.extend(point_issues)
+                all_points.extend(points)
+
+            points_written = repository.upsert_many(all_points, con=con)
+
+        issues_written = quality.record(dataset="etf_adjusted_series", issues=issues)
+        recorder.finish(
+            run_id,
+            status="SUCCESS" if not issues else "PARTIAL",
+            rows_fetched=len(targets),
+            rows_written=points_written,
+            rows_rejected=0,
         )
-        issues.extend(point_issues)
-        points_written += repository.upsert_many(points)
-
-    issues_written = quality.record(dataset="etf_adjusted_series", issues=issues)
-    recorder.finish(
-        run_id,
-        status="SUCCESS" if not issues else "PARTIAL",
-        rows_fetched=len(targets),
-        rows_written=points_written,
-        rows_rejected=0,
-    )
-    return {
-        "run_id": run_id,
-        "status": "SUCCESS" if not issues else "PARTIAL",
-        "target_count": len(targets),
-        "rows_written": points_written,
-        "funds_with_corporate_actions": funds_with_actions,
-        "quality_issues": issues_written,
-    }
+        return {
+            "run_id": run_id,
+            "status": "SUCCESS" if not issues else "PARTIAL",
+            "target_count": len(targets),
+            "rows_written": points_written,
+            "funds_with_corporate_actions": funds_with_actions,
+            "quality_issues": issues_written,
+        }
+    except Exception as exc:
+        recorder.finish(
+            run_id,
+            status="FAILED",
+            rows_fetched=0,
+            rows_written=0,
+            rows_rejected=0,
+            error_message=str(exc),
+        )
+        raise

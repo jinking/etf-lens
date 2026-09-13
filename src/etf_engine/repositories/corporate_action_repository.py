@@ -62,19 +62,27 @@ class CorporateActionRepository:
             con.executemany(sql, rows)
         return len(rows)
 
-    def actions_for(self, security_id: str, asof_date: date | None = None) -> list[dict]:
+    def actions_for(
+        self,
+        security_id: str,
+        asof_date: date | None = None,
+        con=None,
+    ) -> list[dict]:
         """按日期升序返回该公司行为的完整事实（含调整因子）。"""
-        with connect(settings.database_path) as con:
-            rows = con.execute(
-                """
-                SELECT * FROM core.etf_corporate_action
-                WHERE security_id = ?
-                  AND (? IS NULL OR action_date <= ?)
-                ORDER BY action_date
-                """,
-                [security_id, asof_date, asof_date],
-            ).fetchall()
+        sql = """
+        SELECT * FROM core.etf_corporate_action
+        WHERE security_id = ?
+          AND (? IS NULL OR action_date <= ?)
+        ORDER BY action_date
+        """
+        params = [security_id, asof_date, asof_date]
+        if con is not None:
+            rows = con.execute(sql, params).fetchall()
             columns = [c[0] for c in con.description]
+        else:
+            with connect(settings.database_path) as c:
+                rows = c.execute(sql, params).fetchall()
+                columns = [c[0] for c in c.description]
         return [dict(zip(columns, row, strict=True)) for row in rows]
 
     def count(self) -> int:

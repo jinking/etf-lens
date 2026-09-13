@@ -7,7 +7,7 @@ from etf_engine.research.adjustment import ADJUSTMENT_VERSION
 
 
 class AdjustedSeriesRepository:
-    def upsert_many(self, points: list[AdjustedDailyPoint]) -> int:
+    def upsert_many(self, points: list[AdjustedDailyPoint], con=None) -> int:
         if not points:
             return 0
         calculated_at = datetime.now().astimezone()
@@ -49,8 +49,11 @@ class AdjustedSeriesRepository:
             share_adjustment_factor = EXCLUDED.share_adjustment_factor,
             calculated_at = EXCLUDED.calculated_at
         """
-        with connect(settings.database_path) as con:
+        if con is not None:
             con.executemany(sql, rows)
+        else:
+            with connect(settings.database_path) as c:
+                c.executemany(sql, rows)
         return len(rows)
 
     def series(self, security_id: str, *, asof_date=None) -> list[dict]:
