@@ -15,13 +15,32 @@ class MCPSdkNotInstalled(RuntimeError):
 
 
 def _require_fastmcp():
+    """拿到 MCP server 类；SDK 缺失或版本不兼容时给出可执行的提示。
+
+    实测两个坑：
+
+    * mcp 1.x 提供 ``mcp.server.fastmcp.FastMCP``；
+    * mcp 2.x 移除了这个模块，且 import 它抛的**不是** ImportError（是一个
+      提示"已改名为 MCPServer"的自定义异常），只捕 ImportError 会漏掉——
+      CI 就是这样红的。
+    """
     try:
         from mcp.server.fastmcp import FastMCP
-    except ImportError as exc:  # pragma: no cover - 取决于运行环境
+
+        return FastMCP
+    except Exception:
+        pass
+    try:
+        # mcp 2.x 的新位置。工具注册 API 是否完全兼容尚未验证，
+        # 因此这里只保证"能构造 server"（兼容性验证记在 ROADMAP）。
+        from mcp.server.mcpserver import MCPServer
+
+        return MCPServer
+    except Exception as exc:
         raise MCPSdkNotInstalled(
-            '未安装 MCP SDK，请执行 `pip install -e ".[agent]"` 后重试。'
+            '未安装可用的 MCP SDK：请执行 `pip install -e ".[agent]"`，'
+            "或安装 mcp 1.x（`pip install 'mcp<2'`）。"
         ) from exc
-    return FastMCP
 
 
 def build_server(name: str = "etf-lens") -> Any:
