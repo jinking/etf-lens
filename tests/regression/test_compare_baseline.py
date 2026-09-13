@@ -16,6 +16,8 @@ COMPARE_CONTRACT = [
     "manager_name",
     "fund_type",
     "tracking_index_name",
+    "tracking_index_pit",
+    "management_fee_pct",
     "close",
     "change_pct",
     "turnover_amount",

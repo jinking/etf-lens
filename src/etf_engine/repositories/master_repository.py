@@ -135,6 +135,7 @@ class MasterRepository:
                 else None,
                 float(profile.custodian_fee_pct) if profile.custodian_fee_pct is not None else None,
                 profile.tracking_target,
+                profile.source_meta.fetched_at,
                 profile.security_id,
             )
             for profile in profiles
@@ -150,6 +151,9 @@ class MasterRepository:
             management_fee_pct = COALESCE(management_fee_pct, ?),
             custodian_fee_pct = COALESCE(custodian_fee_pct, ?),
             tracking_index_name = COALESCE(tracking_index_name, ?),
+            -- 档案观测时间：只在首次补齐档案时写上。历史查询据此判定
+            -- profile_observed_at <= asof，否则该字段对它不可用（V2.1 §13）。
+            profile_observed_at = COALESCE(profile_observed_at, ?),
             updated_at = now()
         WHERE security_id = ?
         """

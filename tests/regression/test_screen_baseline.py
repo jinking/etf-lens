@@ -18,6 +18,8 @@ SCREEN_CONTRACT = [
     "share_change_20d",
     "estimated_net_subscription_20d",
     "tags",
+    "tracking_index_name",
+    "tracking_index_pit",
     "quote_asof_date",
     "share_asof_date",
     "metric_asof_date",

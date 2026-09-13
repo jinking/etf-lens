@@ -67,3 +67,49 @@ class HoldingRepository:
             ).fetchall()
             cols = [c[0] for c in con.description]
             return [dict(zip(cols, r, strict=True)) for r in rows], latest_date
+
+    def get_top10_asof(self, etf_id: str, asof_date: date) -> tuple[list[dict], date | None, str]:
+        """Point-in-Time 版前十大持仓。
+
+        规则（``docs/POINT_IN_TIME.md``）：
+
+        * 只取 ``report_date <= asof`` 的最新一期；
+        * 若有 ``disclosure_date``，要求 ``disclosure_date <= asof``——
+          报告期结束不等于当天市场已经看到这份持仓；
+        * 只有 report_date、没有披露日时置信度标记为 ``limited``。
+
+        返回 ``(持仓, 报告期, pit_confidence)``。
+        """
+        with connect(settings.database_path) as con:
+            row = con.execute(
+                """
+                SELECT MAX(report_date) AS report_date
+                FROM core.etf_holding_disclosure
+                WHERE etf_id = ?
+                  AND report_date <= ?
+                  AND (disclosure_date IS NULL OR disclosure_date <= ?)
+                """,
+                [etf_id, asof_date, asof_date],
+            ).fetchone()
+            report_date = row[0] if row else None
+            if report_date is None:
+                return [], None, "missing"
+
+            rows = con.execute(
+                """
+                SELECT stock_id, stock_name, weight_pct, shares, market_value,
+                       disclosure_date
+                FROM core.etf_holding_disclosure
+                WHERE etf_id = ? AND report_date = ?
+                ORDER BY weight_pct DESC NULLS LAST
+                LIMIT 10
+                """,
+                [etf_id, report_date],
+            ).fetchall()
+            cols = [c[0] for c in con.description]
+            holdings = [dict(zip(cols, r, strict=True)) for r in rows]
+
+        has_disclosure_date = all(item.get("disclosure_date") is not None for item in holdings)
+        for item in holdings:
+            item.pop("disclosure_date", None)
+        return holdings, report_date, "exact" if has_disclosure_date else "limited"

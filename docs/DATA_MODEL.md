@@ -289,6 +289,26 @@ calculation_version    market_norm_v1
 拿"绝对水平的历史分位"跨期比较会把"市场变大了"读成"资金变多了"。
 任一分量缺失（例如只有单边交易所数据）时对应字段为 NULL。
 
+## mart.etf_peer_group_daily
+
+```text
+security_id + asof_date + calculation_version   PK
+peer_group_id / peer_group_kind / peer_group_label / peer_count
+calculated_at
+```
+
+同类分组的**按日快照**（Point-in-Time 用）。原 `mart.etf_peer_group` 只有
+`security_id` 一行 = "今天的同类"，历史 as-of 查询会拿到现在的分组；
+新表按 `asof_date` 保存，查询用 `asof_date <= requested ORDER BY asof_date DESC`。
+旧表保留兼容（写入时两者同时更新）。
+
+## core.etf_master.profile_observed_at
+
+档案字段（费率 / 管理人 / 托管人 / 跟踪标的）的**观测时间**。
+没有历史档案源时不能假装这些字段是 PIT-safe 的：历史查询要求
+`profile_observed_at <= asof`，否则该字段置 NULL 并给
+`profile_not_observed_asof`（宁可缺失，也不把未来才知道的档案灌进过去）。
+
 ## core.index_constituent
 
 ```text

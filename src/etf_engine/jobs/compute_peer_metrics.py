@@ -206,6 +206,8 @@ def compute_peer_metrics(asof: date | None = None) -> dict:
             for group in groups
         ]
         repository.upsert_groups(group_rows)
+        # 同时写按日快照：历史 as-of 查询用得上（V2.1 Phase 4）。
+        repository.upsert_daily_groups([{**row, "asof_date": asof_date} for row in group_rows])
 
         metric_rows: list[dict] = []
         for group_id, security_ids in members.items():

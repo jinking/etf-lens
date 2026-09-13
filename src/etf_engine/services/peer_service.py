@@ -43,7 +43,11 @@ class PeerService:
             canonical = _canonical(security_id)
             if canonical is None:
                 continue
-            group = self.repository.group_of(canonical)
+            # Point-in-Time：优先按日快照；没有快照才回落到"当前分组"并标注置信度。
+            group = self.repository.group_of_asof(canonical, asof_date=asof_date)
+            group_pit = "asof_snapshot" if group else "current_fallback"
+            if group is None:
+                group = self.repository.group_of(canonical)
             peers = self.repository.peers_of(canonical, asof_date=asof_date)
             rows.append(
                 {
@@ -51,6 +55,7 @@ class PeerService:
                     "peer_group_id": (peers or group or {}).get("peer_group_id"),
                     "peer_group_kind": (group or {}).get("peer_group_kind"),
                     "peer_count": (peers or group or {}).get("peer_count"),
+                    "peer_group_pit": group_pit if group else "missing",
                     "asof_date": (peers or {}).get("asof_date"),
                     "dimensions": {
                         "基础规模": {"aum_rank_pct": (peers or {}).get("aum_rank_pct")},
@@ -84,14 +89,24 @@ class PeerService:
             for row in self.compare_peers(security_ids, asof_date=asof_date)
         ]
 
-    def exposure_overlap(self, security_ids: list[str]) -> dict:
-        """两两持仓重合度；行业维度用统一的行业分类口径。"""
+    def exposure_overlap(self, security_ids: list[str], asof_date: date | None = None) -> dict:
+        """两两持仓重合度；行业维度用统一的行业分类口径。
+
+        Point-in-Time：给了 ``asof_date`` 就只用当时**已经披露**的持仓
+        （``disclosure_date`` 优先；只有报告期时置信度标记 ``limited``）。
+        """
         holdings: dict[str, list[dict]] = {}
+        pit_confidence: dict[str, str] = {}
         for security_id in security_ids:
             canonical = _canonical(security_id)
             if canonical is None:
                 continue
-            top, _ = self.holdings.get_latest_top10(canonical)
+            if asof_date is None:
+                top, _ = self.holdings.get_latest_top10(canonical)
+                pit_confidence[canonical] = "latest_mode"
+            else:
+                top, _, confidence = self.holdings.get_top10_asof(canonical, asof_date)
+                pit_confidence[canonical] = confidence
             holdings[canonical] = top
 
         industry_map = self.industries.industry_map()
@@ -116,5 +131,6 @@ class PeerService:
                 )
         return {
             "coverage": {security_id: len(items) for security_id, items in holdings.items()},
+            "pit_confidence": pit_confidence,
             "pairs": pairs,
         }

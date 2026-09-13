@@ -1,3 +1,5 @@
+from datetime import date
+
 from etf_engine.config.settings import settings
 from etf_engine.db.connection import connect
 
@@ -49,6 +51,28 @@ class TagRepository:
                 WHERE etf_id = ? ORDER BY confidence DESC
                 """,
                 [etf_id],
+            ).fetchall()
+            cols = [c[0] for c in con.description]
+            return [dict(zip(cols, r, strict=True)) for r in rows]
+
+    def get_tags_asof(self, etf_id: str, asof_date: date) -> list[dict]:
+        """Point-in-Time 版标签：``valid_from <= asof < valid_to``。
+
+        不能只按 ``etf_id`` 取"今天的标签"——那会把后来才打上的行业标签
+        灌进历史研究（例如拿 2026 年的持仓穿透结果解释 2025 年的 ETF）。
+        """
+        with connect(settings.database_path) as con:
+            rows = con.execute(
+                """
+                SELECT tag, tag_type, confidence, coverage, calculation_version,
+                       valid_from, valid_to
+                FROM core.etf_tag
+                WHERE etf_id = ?
+                  AND (valid_from IS NULL OR valid_from <= ?)
+                  AND (valid_to IS NULL OR valid_to > ?)
+                ORDER BY confidence DESC
+                """,
+                [etf_id, asof_date, asof_date],
             ).fetchall()
             cols = [c[0] for c in con.description]
             return [dict(zip(cols, r, strict=True)) for r in rows]

@@ -60,13 +60,16 @@ def collect(asof: date, limit: int) -> dict:
     peer_rows = {
         row["security_id"]: row for row in peers.compare_peers(security_ids, asof_date=asof)
     }
-    overlap = peers.exposure_overlap(security_ids)
+    overlap = peers.exposure_overlap(security_ids, asof_date=asof)
 
     rows: list[dict] = []
     for screen_row in ordered:
         security_id = screen_row["security_id"]
         master = master_repository.get_by_id(security_id) or {}
-        holdings, report_date = holding_repository.get_latest_top10(security_id)
+        # Point-in-Time：持仓只取 as-of 当时已经披露的那一期（披露日优先）
+        holdings, report_date, holdings_confidence = holding_repository.get_top10_asof(
+            security_id, asof
+        )
         peer_row = peer_rows.get(security_id, {})
         group = peer_repository.group_of(security_id) or {}
         try:
@@ -97,6 +100,7 @@ def collect(asof: date, limit: int) -> dict:
                 "subscription_20d": metrics.estimated_net_subscription_20d,
                 "tags": screen_row.get("tags"),
                 "peer_group": group.get("peer_group_id"),
+                "peer_group_pit": peer_row.get("peer_group_pit"),
                 "peer_count": group.get("peer_count"),
                 "peer_ranks": {
                     key: list(metrics_map.values())[0]
@@ -111,6 +115,7 @@ def collect(asof: date, limit: int) -> dict:
                     for item in holdings[:5]
                 ],
                 "holdings_report_date": report_date.isoformat() if report_date else None,
+                "holdings_pit_confidence": holdings_confidence,
                 "asof": {
                     "research": metrics.asof_date.isoformat(),
                     "quote": source_dates["quote"].isoformat()
@@ -171,7 +176,10 @@ def render(payload: dict) -> str:
         lines.append(f"**{row['security_id']} {row['name']}**（标签：{row['tags'] or '—'}）")
         if row["holdings"]:
             top = "、".join(f"{item['name']}({item['weight']}%)" for item in row["holdings"])
-            lines.append(f"- 前五大：{top}（报告期 {row['holdings_report_date']}）")
+            lines.append(
+                f"- 前五大：{top}（报告期 {row['holdings_report_date']}，"
+                f"PIT 置信度 {row['holdings_pit_confidence']}）"
+            )
         else:
             lines.append("- 前五大：—（本地没有该 ETF 的披露持仓）")
         lines.append("")
@@ -219,6 +227,34 @@ def render(payload: dict) -> str:
         if row["gaps"]:
             summary = "、".join(f"{key}={reason}" for key, reason in list(row["gaps"].items())[:6])
             lines.append(f"  - 缺口：{summary}")
+
+    holdings_pit = (
+        "SAFE"
+        if all(
+            row.get("holdings_pit_confidence") == "exact" for row in rows if not row.get("error")
+        )
+        else "LIMITED（只有报告期，无披露日）"
+    )
+    peer_pit = (
+        "SAFE"
+        if all(row.get("peer_group_pit") == "asof_snapshot" for row in rows if not row.get("error"))
+        else "LIMITED（该 as-of 无按日快照，回落当前分组）"
+    )
+    lines += [
+        "",
+        "## 5.1 PIT 覆盖",
+        "",
+        "| 数据块 | 状态 |",
+        "| --- | --- |",
+        "| Quote / Share / Metric / Flow | SAFE（按 as-of 截断，口径版本显式指定） |",
+        "| Adjusted Series | SAFE（因子只累积 <= 当日的行为） |",
+        f"| Holdings | {holdings_pit} |",
+        "| Tag / Tracking Index | SAFE（有效期过滤；无映射时回落 master 并标注 master_latest） |",
+        f"| Peer Group | {peer_pit} |",
+        "| Fund Profile | LIMITED（profile_observed_at <= asof 才输出费率等字段） |",
+        "",
+        "明细见 `docs/POINT_IN_TIME_COVERAGE.md`。",
+    ]
 
     lines += [
         "",

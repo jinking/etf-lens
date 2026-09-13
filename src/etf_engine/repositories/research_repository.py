@@ -68,7 +68,32 @@ _COMPARE_SELECT = """
             COALESCE(q.name, m.short_name, m.fund_name) AS fund_name,
             m.manager_name,
             m.fund_type,
-            m.tracking_index_name,
+            COALESCE(
+                (
+                    SELECT im.index_name FROM core.etf_index_map im
+                    WHERE im.etf_id = m.security_id
+                      AND (? IS NULL OR im.valid_from IS NULL OR im.valid_from <= ?)
+                      AND (? IS NULL OR im.valid_to IS NULL OR im.valid_to > ?)
+                    ORDER BY im.valid_from DESC NULLS LAST
+                    LIMIT 1
+                ),
+                m.tracking_index_name
+            ) AS tracking_index_name,
+            CASE
+                WHEN EXISTS (
+                    SELECT 1 FROM core.etf_index_map im
+                    WHERE im.etf_id = m.security_id
+                      AND (? IS NULL OR im.valid_from IS NULL OR im.valid_from <= ?)
+                      AND (? IS NULL OR im.valid_to IS NULL OR im.valid_to > ?)
+                ) THEN 'mapped_asof'
+                WHEN m.tracking_index_name IS NOT NULL THEN 'master_latest'
+                ELSE NULL
+            END AS tracking_index_pit,
+            CASE
+                WHEN m.profile_observed_at IS NULL THEN NULL
+                WHEN ? IS NULL OR m.profile_observed_at <= CAST(? AS TIMESTAMP)
+                    THEN m.management_fee_pct
+            END AS management_fee_pct,
             q.close,
             q.change_pct,
             q.turnover_amount,
@@ -107,8 +132,32 @@ _SCREEN_SELECT = """
             f.estimated_net_subscription_20d,
             (
                 SELECT string_agg(tag, ' / ')
-                FROM core.etf_tag tg WHERE tg.etf_id = m.security_id
+                FROM core.etf_tag tg
+                WHERE tg.etf_id = m.security_id
+                  AND (? IS NULL OR tg.valid_from IS NULL OR tg.valid_from <= ?)
+                  AND (? IS NULL OR tg.valid_to IS NULL OR tg.valid_to > ?)
             ) AS tags,
+            COALESCE(
+                (
+                    SELECT im.index_name FROM core.etf_index_map im
+                    WHERE im.etf_id = m.security_id
+                      AND (? IS NULL OR im.valid_from IS NULL OR im.valid_from <= ?)
+                      AND (? IS NULL OR im.valid_to IS NULL OR im.valid_to > ?)
+                    ORDER BY im.valid_from DESC NULLS LAST
+                    LIMIT 1
+                ),
+                m.tracking_index_name
+            ) AS tracking_index_name,
+            CASE
+                WHEN EXISTS (
+                    SELECT 1 FROM core.etf_index_map im
+                    WHERE im.etf_id = m.security_id
+                      AND (? IS NULL OR im.valid_from IS NULL OR im.valid_from <= ?)
+                      AND (? IS NULL OR im.valid_to IS NULL OR im.valid_to > ?)
+                ) THEN 'mapped_asof'
+                WHEN m.tracking_index_name IS NOT NULL THEN 'master_latest'
+                ELSE NULL
+            END AS tracking_index_pit,
             q.trade_date AS quote_asof_date,
             s.trade_date AS share_asof_date,
             met.trade_date AS metric_asof_date,
@@ -199,6 +248,8 @@ class ResearchRepository:
         params.extend([*security_ids, *_cte_params(context)])  # share
         params.extend([*security_ids, *_cte_params(context, version=current_metric_version())])
         params.extend([*security_ids, *_cte_params(context, version=current_flow_version())])
+        # SELECT 子句里的 as-of 占位：跟踪指数映射(2) + PIT 标记(2) + 档案观测(2)
+        params.extend(_cte_params(context) * 5)
 
         sql = f"""
         WITH {ctes}
@@ -241,11 +292,16 @@ class ResearchRepository:
             values.extend([pattern, pattern, pattern])
 
         if tag:
+            # 标签是带有效期的（valid_from / valid_to）：按 as-of 过滤，
+            # 否则历史研究会被"今天才打上的标签"污染。
             where_clauses.append(
                 "EXISTS (SELECT 1 FROM core.etf_tag tg "
-                "WHERE tg.etf_id = m.security_id AND tg.tag ILIKE ?)"
+                "WHERE tg.etf_id = m.security_id AND tg.tag ILIKE ? "
+                "  AND (? IS NULL OR tg.valid_from IS NULL OR tg.valid_from <= ?) "
+                "  AND (? IS NULL OR tg.valid_to IS NULL OR tg.valid_to > ?))"
             )
             values.append(f"%{tag}%")
+            values.extend(_cte_params(context) * 2)
 
         ctes = ",\n".join(
             [
@@ -260,6 +316,8 @@ class ResearchRepository:
         params.extend(_cte_params(context))
         params.extend(_cte_params(context, version=current_metric_version()))
         params.extend(_cte_params(context, version=current_flow_version()))
+        # SELECT 子句：标签(4) + 跟踪指数名(2) + PIT 标记(2) = 8
+        params.extend(_cte_params(context) * 6)
         params.extend(values)
 
         sql = f"""
