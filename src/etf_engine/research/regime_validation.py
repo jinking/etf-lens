@@ -170,6 +170,57 @@ def switch_count(states: list[str]) -> int:
     return sum(1 for left, right in zip(states, states[1:], strict=False) if left != right)
 
 
+def forward_max_drawdown(start_value: float, forward_values: pd.Series | list[float]) -> float:
+    """计算起点与后续观察序列共同构成的窗口内的真实最大回撤。
+
+    窗口从起点当天开始（避免如果后续单调上涨却误报正回撤）：
+    window = [start_value] + forward_values
+    running_peak = window.cummax()
+    drawdowns = window / running_peak - 1
+    max_drawdown = drawdowns.min()
+    """
+    if start_value <= 0:
+        return 0.0
+    if isinstance(forward_values, pd.Series):
+        clean = forward_values.dropna()
+        if clean.empty:
+            return 0.0
+        seq = [float(start_value), *[float(x) for x in clean.tolist()]]
+    else:
+        seq = [
+            float(start_value),
+            *[float(x) for x in forward_values if x == x and x is not None],
+        ]
+        if len(seq) <= 1:
+            return 0.0
+
+    s = pd.Series(seq, dtype=float)
+    running_peak = s.cummax()
+    drawdowns = s / running_peak - 1.0
+    val = float(drawdowns.min())
+    return min(val, 0.0)
+
+
+def max_adverse_excursion(start_value: float, forward_values: pd.Series | list[float]) -> float:
+    """计算相对起点最大不利变动（MAE）：min(forward_values) / start_value - 1。
+
+    保留用于度量相对于买入/状态发生时点的最大跌幅（注意它不是峰谷最大回撤）。
+    """
+    if start_value <= 0:
+        return 0.0
+    if isinstance(forward_values, pd.Series):
+        clean = forward_values.dropna()
+        if clean.empty:
+            return 0.0
+        min_val = float(clean.min())
+    else:
+        valid = [float(x) for x in forward_values if x == x and x is not None]
+        if not valid:
+            return 0.0
+        min_val = min(valid)
+    return min_val / start_value - 1.0
+
+
 def _forward_stats(
     *,
     states: list[str],
@@ -201,7 +252,7 @@ def _forward_stats(
         if forward.empty:
             continue
         returns.append(float(forward.iloc[-1] / start_value - 1))
-        drawdowns.append(float(forward.min() / start_value - 1))
+        drawdowns.append(forward_max_drawdown(float(start_value), forward))
 
     if not returns:
         return _empty_stats()
