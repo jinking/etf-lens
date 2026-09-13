@@ -26,13 +26,22 @@ class CoreMetricsRepository:
             )
 
     def share_history(self, security_id: str, asof_date: date) -> list[dict]:
+        """份额历史 + 按同一天对齐的净值。
+
+        份额接口不提供净值时，份额行里的 ``nav`` 只在少数日期上被补齐；
+        这里与 ``compute_mart`` 用同一口径（同日 join nav 表）取净值，
+        否则估算申赎会因为"净值只差某个日期"而整体变成 NULL。
+        """
         with connect(settings.database_path) as con:
             return self._rows(
                 con,
                 """
-                SELECT * FROM core.etf_share_daily
-                WHERE security_id = ? AND trade_date <= ?
-                ORDER BY trade_date
+                SELECT s.* REPLACE (COALESCE(s.nav, n.unit_nav) AS nav)
+                FROM core.etf_share_daily s
+                LEFT JOIN core.etf_nav_daily n
+                       ON n.security_id = s.security_id AND n.nav_date = s.trade_date
+                WHERE s.security_id = ? AND s.trade_date <= ?
+                ORDER BY s.trade_date
                 """,
                 [security_id, asof_date],
             )
