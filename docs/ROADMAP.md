@@ -181,8 +181,10 @@ Phase 5  历史 regime 验证命名与能力边界          ✅ 完成
          （P1-2：research/regime_validation.py 成为实现，walk_forward 只做兼容转发；
           按自然年固定 regime，daily / transition 两套样本分开统计；
           历史覆盖扩到 4 年量级，docs/REGIME_VALIDATION.md 可重复生成）
-Phase 6  V2.1 最终验收（Case A–E）                ⬜ 未开始
-         （scripts/v2_acceptance.py 重跑 + docs/V2_1_ACCEPTANCE.md）
+Phase 6  V2.1 最终验收（Case A–E）                ✅ 完成
+         （scripts/v2_acceptance.py 重跑 → docs/V2_ACCEPTANCE.md；
+          scripts/v2_1_acceptance.py --write-doc → docs/V2_1_ACCEPTANCE.md，
+          Case A–D 可重复执行，Case E 直查 GitHub Actions run）
 ```
 
 ```text
