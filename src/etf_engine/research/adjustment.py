@@ -8,12 +8,17 @@
 ``adjusted_series_future_action_leak`` 要拦的事。后复权天然 Point-in-Time 安全：
 任一历史行只依赖它自己和它之前的事实。
 
-因子累积规则（``U`` 的更新，均发生在行为日当天）：
+因子累积规则——**三套因子独立累计**：
 
 ```text
-拆分/折算   shares ×k, nav ÷k   →  U ← U × k          （保证 P×U 连续）
-分红        除息日价格掉 d      →  U ← U × P_prev / (P_prev - d)
+                 price_factor   nav_factor   share_factor
+拆分/折算 1:k        ×k            ×k            ×k
+现金分红 d           ×m            ×m            不变      ← m = P_prev / (P_prev - d)
 ```
+
+**现金分红绝不能改变 ``share_factor``**：分红时实际份额没有变，
+若把分红也算进份额因子，``adjusted_shares`` 会出现机械变化，
+``flow_v2`` 就会把分红日读成一笔假赎回。这是 V2.1 修掉的 correctness bug。
 
 **生效日对齐**（实测确认，不是猜的）：
 
@@ -109,26 +114,22 @@ def build_adjusted_series(
         if fact_date is not None:
             fact_effects.setdefault(fact_date, []).append(action)
 
-    close_factor = Decimal(1)
-    fact_factor = Decimal(1)
+    price_factor = Decimal(1)
+    nav_factor = Decimal(1)
+    share_factor = Decimal(1)
     points: list[AdjustedDailyPoint] = []
 
     for trade_date in timeline:
         for action in close_effects.get(trade_date, []):
-            close_factor = _apply_action_factor(
-                action,
-                factor=close_factor,
-                inputs=inputs,
-                trade_date=trade_date,
-                issues=issues,
+            price_factor *= _action_multiplier(
+                action, inputs=inputs, trade_date=trade_date, issues=issues, channel="price"
             )
         for action in fact_effects.get(trade_date, []):
-            fact_factor = _apply_action_factor(
-                action,
-                factor=fact_factor,
-                inputs=inputs,
-                trade_date=trade_date,
-                issues=issues,
+            nav_factor *= _action_multiplier(
+                action, inputs=inputs, trade_date=trade_date, issues=issues, channel="nav"
+            )
+            share_factor *= _action_multiplier(
+                action, inputs=inputs, trade_date=trade_date, issues=issues, channel="share"
             )
 
         close = closes.get(trade_date)
@@ -138,27 +139,47 @@ def build_adjusted_series(
             AdjustedDailyPoint(
                 security_id=inputs.security_id,
                 trade_date=trade_date,
-                adjusted_close=(close * close_factor) if close is not None else None,
-                adjusted_nav=(nav * fact_factor) if nav is not None else None,
-                adjusted_shares=(share / fact_factor) if share is not None else None,
-                adjustment_factor=fact_factor,
-                price_adjustment_factor=close_factor,
+                adjusted_close=(close * price_factor) if close is not None else None,
+                adjusted_nav=(nav * nav_factor) if nav is not None else None,
+                adjusted_shares=(share / share_factor) if share is not None else None,
+                # DEPRECATED：只为迁移期兼容旧读者，值等于 nav_factor。
+                # 新代码请用 nav_adjustment_factor / share_adjustment_factor。
+                adjustment_factor=nav_factor,
+                price_adjustment_factor=price_factor,
+                nav_adjustment_factor=nav_factor,
+                share_adjustment_factor=share_factor,
             )
         )
 
-    return points, issues
+    return points, _dedupe_issues(issues)
 
 
-def _apply_action_factor(
+def _dedupe_issues(issues: list[DataQualityIssue]) -> list[DataQualityIssue]:
+    """同一问题可能在三套因子上各出现一次，按 (规则, 详情) 去重。"""
+    seen: set[tuple[str, str]] = set()
+    unique: list[DataQualityIssue] = []
+    for issue in issues:
+        key = (issue.rule_name, issue.details)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(issue)
+    return unique
+
+
+def _action_multiplier(
     action: ETFCorporateAction,
     *,
-    factor: Decimal,
     inputs: AdjustmentInputs,
     trade_date: date,
     issues: list[DataQualityIssue],
+    channel: str,
 ) -> Decimal:
-    """把一次公司行为累积到因子上（无效行为只记问题，不改变因子）。"""
+    """一次公司行为在某个因子通道上的乘数（不适用时为 1）。"""
     if action.action_type is CorporateActionType.DIVIDEND:
+        if channel == "share":
+            # 硬约束：现金分红不改变份额，因此份额因子保持 1。
+            return Decimal(1)
         previous_close = _previous_close(inputs.closes, min(trade_date, action.action_date))
         cash = action.cash_distribution
         if previous_close is None or cash is None or cash <= 0:
@@ -169,7 +190,7 @@ def _apply_action_factor(
                     "该次分红不参与复权",
                 )
             )
-            return factor
+            return Decimal(1)
         if cash >= previous_close:
             issues.append(
                 warn(
@@ -178,19 +199,19 @@ def _apply_action_factor(
                     f"前收盘 {previous_close}，该次分红不参与复权",
                 )
             )
-            return factor
-        return factor * previous_close / (previous_close - cash)
+            return Decimal(1)
+        return previous_close / (previous_close - cash)
 
-    share_factor = action.share_adjustment_factor
-    if share_factor is None or share_factor <= 0:
+    multiplier = action.share_adjustment_factor
+    if multiplier is None or multiplier <= 0:
         issues.append(
             warn(
                 "split_adjustment_skipped",
                 f"{inputs.security_id} {action.action_date} 拆分比例缺失，不参与复权",
             )
         )
-        return factor
-    return factor * share_factor
+        return Decimal(1)
+    return multiplier
 
 
 def share_factor_on(actions: list[ETFCorporateAction], trade_date: date) -> Decimal:

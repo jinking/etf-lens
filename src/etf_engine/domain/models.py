@@ -299,7 +299,12 @@ class AdjustedDailyPoint(BaseModel):
     adjusted_close: Decimal | None = None
     adjusted_nav: Decimal | None = None
     adjusted_shares: Decimal | None = None
-    #: 基金层面因子（净值/份额）：折算日当天生效。
+    #: DEPRECATED：迁移期兼容旧读者，值等于 ``nav_adjustment_factor``。
+    #: 新代码请用下面两个独立因子——把净值与份额混用一个因子会让现金分红污染份额。
     adjustment_factor: Decimal
     #: 价格因子：折算日的成交价仍是折算前价格，次一交易日才生效。
     price_adjustment_factor: Decimal | None = None
+    #: 净值因子：折算日当天生效；现金分红会影响它（净值收益需要连续）。
+    nav_adjustment_factor: Decimal | None = None
+    #: 份额因子：只受拆分/折算影响，**现金分红绝不改变它**。
+    share_adjustment_factor: Decimal | None = None

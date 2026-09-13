@@ -44,12 +44,21 @@ V2 补上正确的复权能力。
 adjusted = 原始值 × U(t)          U(t) 只累积 "action_date <= t" 的行为
 ```
 
-因子更新：
+因子更新——**三套因子独立累计**（V2.1 P0-2 修正）：
 
 ```text
-拆分/折算   shares ×k, nav ÷k   →  U ← U × k
-分红        除息日价格掉 d      →  U ← U × P_prev / (P_prev − d)
+                   price_factor   nav_factor   share_factor
+拆分/折算 1:k          ×k            ×k            ×k
+现金分红 d             ×m            ×m            不变      ← m = P_prev / (P_prev − d)
 ```
+
+为什么必须拆开：早期实现用**一个** `adjustment_factor` 同时服务净值与份额，
+而现金分红也会改变它——分红时实际份额没变，`adjusted_shares` 却出现机械变化，
+`flow_v2` 于是把分红日读成一笔**假赎回**。现在份额因子只受拆分/折算影响，
+有一条自检规则 `cash_dividend_changes_share_factor` 专门守它。
+
+`adjustment_factor` 列保留但已废弃（值为 `nav_adjustment_factor`），
+仅为迁移期兼容旧读者；新代码请用 `nav_adjustment_factor` / `share_adjustment_factor`。
 
 生效日两套对齐（实测确认，不是猜的）：
 
@@ -68,12 +77,14 @@ adjusted = 原始值 × U(t)          U(t) 只累积 "action_date <= t" 的行�
 落表 `mart.etf_adjusted_daily`（原始字段一律不动）：
 
 ```text
-adjusted_close          = close × price_adjustment_factor(t)
-adjusted_nav            = unit_nav × adjustment_factor(t)
-adjusted_shares         = shares / adjustment_factor(t)   （换成起始单位基准）
-adjustment_factor       = 基金层面因子 U(t)（净值和份额用）
-price_adjustment_factor = 价格因子（比 U 晚一个交易日生效）
-calculation_version     = adjust_v1
+adjusted_close           = close    × price_adjustment_factor(t)
+adjusted_nav             = unit_nav × nav_adjustment_factor(t)
+adjusted_shares          = shares   ÷ share_adjustment_factor(t)
+price_adjustment_factor  = 价格因子（比行为日晚一个交易日生效）
+nav_adjustment_factor    = 净值因子（行为日当天生效，含分红乘数）
+share_adjustment_factor  = 份额因子（只受拆分/折算影响）
+adjustment_factor        = DEPRECATED，等于 nav_adjustment_factor
+calculation_version      = adjust_v1
 ```
 
 ## 4. 研究口径升级

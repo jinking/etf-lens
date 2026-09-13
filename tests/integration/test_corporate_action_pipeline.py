@@ -244,3 +244,87 @@ def test_audit_flags_unadjusted_flow_across_a_split(tmp_path, monkeypatch):
     ]
     assert check["count"] >= 1
     assert "机械份额变化会被误读成申赎" in check["violations"][0]["detail"]
+
+
+DIVIDEND_DAY = DAYS[10]
+
+
+def _add_dividend(amount: str) -> None:
+    """在已有拆分事实之外，再补一条现金分红。"""
+    CorporateActionRepository().upsert_many(
+        [
+            ETFCorporateAction(
+                security_id=SECURITY_ID,
+                action_date=DIVIDEND_DAY,
+                action_type=CorporateActionType.DIVIDEND,
+                cash_distribution=Decimal(amount),
+                source_meta=_meta("eastmoney_fund_dividend"),
+            )
+        ]
+    )
+
+
+def test_cash_dividend_does_not_create_a_fake_redemption(tmp_path, monkeypatch):
+    """V2.1 P0-2：分红日份额没变，flow_v2 的份额变化必须为 0。
+
+    旧实现里分红会改变"基金层面因子"（净值与份额共用），分红日 adjusted_shares
+    出现机械下跌 → 被读成一笔假赎回。
+    """
+    _prepare(tmp_path, monkeypatch)
+    _add_dividend("0.05")
+    # 分红日设为「价格下跌、份额不变」的真实形态
+    with connect(settings.database_path) as con:
+        con.execute(
+            "UPDATE core.etf_quote_daily SET close = 1.45 WHERE security_id = ? AND trade_date = ?",
+            [SECURITY_ID, DIVIDEND_DAY],
+        )
+
+    compute_adjusted_series(security_ids=[SECURITY_ID])
+
+    with connect(settings.database_path) as con:
+        before = con.execute(
+            """
+            SELECT adjusted_shares, share_adjustment_factor
+            FROM mart.etf_adjusted_daily
+            WHERE security_id = ? AND trade_date = ?
+            """,
+            [SECURITY_ID, DAYS[9]],
+        ).fetchone()
+        after = con.execute(
+            """
+            SELECT adjusted_shares, share_adjustment_factor
+            FROM mart.etf_adjusted_daily
+            WHERE security_id = ? AND trade_date = ?
+            """,
+            [SECURITY_ID, DIVIDEND_DAY],
+        ).fetchone()
+
+    assert after[1] == before[1] == 1.0, "分红不改变份额因子"
+    # 夹具里折算前份额每天 +1（真实申赎）。分红日只能看到这 +1，
+    # 不能出现"分红造成的机械减少"。
+    assert after[0] - before[0] == 1
+
+
+def test_cash_dividend_keeps_nav_returns_continuous(tmp_path, monkeypatch):
+    """分红要让净值收益连续：除息日的净值跌幅会被因子补回来。"""
+    _prepare(tmp_path, monkeypatch)
+    _add_dividend("0.05")
+
+    compute_adjusted_series(security_ids=[SECURITY_ID])
+
+    with connect(settings.database_path) as con:
+        rows = con.execute(
+            """
+            SELECT trade_date, adjusted_nav, nav_adjustment_factor
+            FROM mart.etf_adjusted_daily
+            WHERE security_id = ? AND trade_date BETWEEN ? AND ?
+            ORDER BY trade_date
+            """,
+            [SECURITY_ID, DAYS[9], DIVIDEND_DAY],
+        ).fetchall()
+
+    assert rows[0][2] == 1.0
+    assert rows[-1][2] > 1.0, "除息日的净值因子抬升（P_prev/(P_prev-d)）"
+    # 净值序列本身在夹具里是平的（1.5 → 1.5），因子抬升后复权净值也抬升，
+    # 关键是没有出现"因子改变了份额"这种跨通道污染。
+    assert rows[-1][1] > rows[0][1]

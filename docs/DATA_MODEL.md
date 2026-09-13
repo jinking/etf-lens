@@ -217,11 +217,16 @@ source / upstream_source / fetched_at / quality_status / ingestion_run_id
 ```text
 security_id + trade_date + calculation_version   PK
 adjusted_close / adjusted_nav / adjusted_shares
-adjustment_factor          # U(t)，只累积 <= t 的公司行为
+price_adjustment_factor    # 价格通道（比行为日晚一个交易日生效）
+nav_adjustment_factor      # 净值通道（行为日当天生效，含分红乘数）
+share_adjustment_factor    # 份额通道（只受拆分/折算影响，分红绝不改变它）
+adjustment_factor          # DEPRECATED：等于 nav_adjustment_factor，仅为迁移期兼容
 calculated_at
 ```
 
-口径 `adjust_v1`（后复权，Point-in-Time 安全）。原始 `core` 事实字段一律不改，
+口径 `adjust_v1`（后复权，Point-in-Time 安全）：每个因子只累积截至当日的公司行为。
+三套因子必须独立——把净值与份额混用一个因子会让现金分红污染份额，
+进而把分红日读成假赎回（V2.1 P0-2）。原始 `core` 事实字段一律不改，
 复权值单独成表。详见 [`CORPORATE_ACTIONS.md`](CORPORATE_ACTIONS.md)。
 
 ## core.etf_quote_snapshot

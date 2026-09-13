@@ -24,6 +24,7 @@ EXPECTED_RULES = {
     "adjusted_series_missing_version": "ERROR",
     "adjusted_series_future_action_leak": "ERROR",
     "docs_consistency": "WARN",
+    "cash_dividend_changes_share_factor": "ERROR",
 }
 
 

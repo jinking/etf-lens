@@ -22,6 +22,12 @@ class AdjustedSeriesRepository:
                 float(point.price_adjustment_factor)
                 if point.price_adjustment_factor is not None
                 else None,
+                float(point.nav_adjustment_factor)
+                if point.nav_adjustment_factor is not None
+                else None,
+                float(point.share_adjustment_factor)
+                if point.share_adjustment_factor is not None
+                else None,
                 ADJUSTMENT_VERSION,
                 calculated_at,
             )
@@ -30,14 +36,17 @@ class AdjustedSeriesRepository:
         sql = """
         INSERT INTO mart.etf_adjusted_daily (
             security_id, trade_date, adjusted_close, adjusted_nav, adjusted_shares,
-            adjustment_factor, price_adjustment_factor, calculation_version, calculated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?)
+            adjustment_factor, price_adjustment_factor, nav_adjustment_factor,
+            share_adjustment_factor, calculation_version, calculated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT (security_id, trade_date, calculation_version) DO UPDATE SET
             adjusted_close = EXCLUDED.adjusted_close,
             adjusted_nav = EXCLUDED.adjusted_nav,
             adjusted_shares = EXCLUDED.adjusted_shares,
             adjustment_factor = EXCLUDED.adjustment_factor,
             price_adjustment_factor = EXCLUDED.price_adjustment_factor,
+            nav_adjustment_factor = EXCLUDED.nav_adjustment_factor,
+            share_adjustment_factor = EXCLUDED.share_adjustment_factor,
             calculated_at = EXCLUDED.calculated_at
         """
         with connect(settings.database_path) as con:

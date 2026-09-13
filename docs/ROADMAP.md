@@ -167,8 +167,9 @@ Phase 1  统一 Research Version Resolver          ✅ 完成
          不再让"同日 v1/v2"由 ROW_NUMBER 的随机 tie-break 决定；
          回归夹具改为先建复权序列（生产口径是 v2）。
 
-Phase 2  拆分 Price / NAV / Share 三套复权因子    ⬜ 未开始
-         （P0-2：现金分红目前会改变 adjusted_shares，可能制造假赎回）
+Phase 2  拆分 Price / NAV / Share 三套复权因子    ✅ 完成
+         （P0-2：分红不再改变份额因子；新增 audit 规则
+          cash_dividend_changes_share_factor + 分红/组合测试）
 Phase 3  修复 GitHub Actions 普通 CI             ⬜ 未开始
          （P0-3：CI 需要 -m "not live" 与夹具库）
 Phase 4  Point-in-Time 覆盖矩阵                  ⬜ 未开始

@@ -100,6 +100,12 @@ DATA_RULES = (
         "文档与代码的结构化一致性：README/脚本里出现的 CLI 命令必须真实存在，"
         "代码里出现的 calculation_version 必须已登记，迁移建的表要写进数据模型文档",
     ),
+    DataRule(
+        "cash_dividend_changes_share_factor",
+        SEVERITY_ERROR,
+        "现金分红不得改变份额因子：分红时实际份额没变，份额因子跳变会让 "
+        "flow_v2 把分红日读成假赎回（V2.1 P0-2）",
+    ),
 )
 
 
@@ -632,6 +638,56 @@ def _docs_consistency_violations(con) -> list[dict]:
     return violations[:10]
 
 
+def _cash_dividend_share_factor_violations(con) -> list[dict]:
+    """现金分红不得改变份额因子。
+
+    比较除息日当天与其前一个有效日的 ``share_adjustment_factor``：
+    同一天若有份额类行为（拆分/折算），份额因子的变化是合法的，跳过。
+    """
+    if not (
+        _table_exists(con, "core.etf_corporate_action")
+        and _table_exists(con, "mart.etf_adjusted_daily")
+    ):
+        return []
+    rows = _rows(
+        con,
+        """
+        SELECT a.security_id, a.action_date,
+               prev.share_adjustment_factor, today.share_adjustment_factor
+        FROM core.etf_corporate_action a
+        JOIN mart.etf_adjusted_daily today
+          ON today.security_id = a.security_id AND today.trade_date = a.action_date
+        JOIN mart.etf_adjusted_daily prev
+          ON prev.security_id = a.security_id
+         AND prev.trade_date = (
+                SELECT MAX(x.trade_date) FROM mart.etf_adjusted_daily x
+                WHERE x.security_id = a.security_id AND x.trade_date < a.action_date
+             )
+        WHERE a.action_type = 'DIVIDEND'
+          AND today.share_adjustment_factor IS NOT NULL
+          AND prev.share_adjustment_factor IS NOT NULL
+          AND today.share_adjustment_factor <> prev.share_adjustment_factor
+          AND NOT EXISTS (
+                SELECT 1 FROM core.etf_corporate_action s
+                WHERE s.security_id = a.security_id
+                  AND s.action_date = a.action_date
+                  AND s.action_type <> 'DIVIDEND'
+             )
+        LIMIT 10
+        """,
+    )
+    return [
+        {
+            "dataset": "mart.etf_adjusted_daily",
+            "detail": (
+                f"{security_id} {action_date} 是分红日，但份额因子从 "
+                f"{prev_factor} 变成 {today_factor}——分红不改变份额"
+            ),
+        }
+        for security_id, action_date, prev_factor, today_factor in rows
+    ]
+
+
 def _source_text(root: Path) -> str:
     """把 src 下的 Python 源码拼起来，供版本号扫描。"""
     parts: list[str] = []
@@ -654,6 +710,7 @@ _IMPLEMENTATIONS = {
     "adjusted_series_missing_version": _adjusted_version_violations,
     "adjusted_series_future_action_leak": _adjusted_future_leak_violations,
     "docs_consistency": _docs_consistency_violations,
+    "cash_dividend_changes_share_factor": _cash_dividend_share_factor_violations,
 }
 
 

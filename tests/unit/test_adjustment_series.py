@@ -194,3 +194,97 @@ def test_reverse_split_factor_is_below_one():
     )
 
     assert share_factor_on([reverse], D3) == Decimal("0.3709")
+
+
+def _dividend(action_date: date, cash: str) -> ETFCorporateAction:
+    return ETFCorporateAction(
+        security_id="510300.SH",
+        action_date=action_date,
+        action_type=CorporateActionType.DIVIDEND,
+        cash_distribution=Decimal(cash),
+        source_meta=_meta(),
+    )
+
+
+def test_cash_dividend_never_changes_adjusted_shares():
+    """V2.1 P0-2：分红不改变份额，adjusted_shares 必须连续。
+
+    旧实现里分红会改变"基金层面因子"，而份额也用同一个因子 → 分红日
+    adjusted_shares 出现机械变化 → flow_v2 读成假赎回。
+    """
+    inputs = AdjustmentInputs(
+        security_id="510300.SH",
+        closes=[(D1, Decimal("4.00")), (D2, Decimal("4.00")), (D3, Decimal("3.90"))],
+        navs=[(D1, Decimal("4.00")), (D2, Decimal("4.00")), (D3, Decimal("3.90"))],
+        shares=[(D1, Decimal("100")), (D2, Decimal("100")), (D3, Decimal("100"))],
+        actions=[_dividend(D2, "0.10")],
+    )
+
+    points, issues = build_adjusted_series(inputs)
+
+    assert issues == []
+    by_date = {point.trade_date: point for point in points}
+    assert by_date[D1].adjusted_shares == Decimal("100")
+    assert by_date[D2].adjusted_shares == Decimal("100")
+    assert by_date[D3].adjusted_shares == Decimal("100")
+    # 份额因子全程为 1（分红不碰它）
+    assert by_date[D3].share_adjustment_factor == Decimal(1)
+    # 净值/价格因子在除息日的价格生效日之后才抬升，用来保持收益连续
+    assert by_date[D3].nav_adjustment_factor > Decimal(1)
+
+
+def test_dividend_plus_real_subscription_keeps_the_economic_change():
+    """分红 + 真实申购：经济变化只能是 +10，不能被分红因子污染。"""
+    inputs = AdjustmentInputs(
+        security_id="510300.SH",
+        closes=[(D1, Decimal("4.00")), (D2, Decimal("4.00"))],
+        navs=[(D1, Decimal("4.00")), (D2, Decimal("4.00"))],
+        shares=[(D1, Decimal("100")), (D2, Decimal("110"))],
+        actions=[_dividend(D2, "0.10")],
+    )
+
+    points, _ = build_adjusted_series(inputs)
+
+    by_date = {point.trade_date: point for point in points}
+    assert by_date[D2].adjusted_shares == Decimal("110"), "份额因子为 1，调整后=原始"
+    assert by_date[D2].adjusted_shares - by_date[D1].adjusted_shares == Decimal("10")
+
+
+def test_split_plus_dividend_keeps_both_effects_separate():
+    """拆分 + 分红：份额因子含 k，净值/价格因子还要再含分红乘数。"""
+    inputs = AdjustmentInputs(
+        security_id="515880.SH",
+        closes=[
+            (D1, Decimal("4.00")),
+            (D2, Decimal("4.00")),
+            (D3, Decimal("4.00")),
+            (D4, Decimal("2.00")),
+        ],
+        navs=[(D1, Decimal("4.00")), (D2, Decimal("4.00")), (D3, Decimal("2.00"))],
+        shares=[(D1, Decimal("100")), (D3, Decimal("200"))],
+        actions=[_split(D2, "2.0000"), _dividend(D3, "0.10")],
+    )
+
+    points, _ = build_adjusted_series(inputs)
+    by_date = {point.trade_date: point for point in points}
+
+    assert by_date[D4].share_adjustment_factor == Decimal(2), "份额因子只含拆分"
+    assert by_date[D4].nav_adjustment_factor > Decimal(2), "净值因子额外含分红乘数"
+    assert by_date[D3].adjusted_shares == Decimal("100"), "拆分后份额在复权口径下连续"
+
+
+def test_dividend_without_previous_close_does_not_touch_shares():
+    """无法计算分红乘数时只记问题：份额因子仍然不受影响。"""
+    inputs = AdjustmentInputs(
+        security_id="510300.SH",
+        closes=[(D3, Decimal("3.90"))],
+        navs=[],
+        shares=[(D3, Decimal("100"))],
+        actions=[_dividend(D2, "0.10")],
+    )
+
+    points, issues = build_adjusted_series(inputs)
+
+    assert points[0].share_adjustment_factor == Decimal(1)
+    assert points[0].adjusted_shares == Decimal("100")
+    assert [issue.rule_name for issue in issues] == ["dividend_adjustment_skipped"]

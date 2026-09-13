@@ -406,3 +406,59 @@ def test_docs_consistency_is_clean_on_the_real_repo(tmp_path, monkeypatch):
     check = _results()["docs_consistency"]
 
     assert check["count"] == 0, check["violations"]
+
+
+def test_cash_dividend_that_moves_share_factor_is_flagged(tmp_path, monkeypatch):
+    """分红日份额因子跳变 → 会被读成假赎回，必须报出来。"""
+    _prepare(tmp_path, monkeypatch)
+    previous_day = TRADING_DAY - timedelta(days=1)
+    with connect(settings.database_path) as con:
+        con.execute(
+            """
+            INSERT INTO core.etf_corporate_action
+                (security_id, action_date, action_type, cash_distribution,
+                 source, fetched_at, quality_status)
+            VALUES ('588200.SH', ?, 'DIVIDEND', 0.1, 'test', ?, 'PASS')
+            """,
+            [TRADING_DAY, FETCHED_AT],
+        )
+        con.executemany(
+            """
+            INSERT INTO mart.etf_adjusted_daily
+                (security_id, trade_date, adjustment_factor, share_adjustment_factor,
+                 calculation_version, calculated_at)
+            VALUES ('588200.SH', ?, 1.0, ?, 'adjust_v1', ?)
+            """,
+            [(previous_day, 1.0, FETCHED_AT), (TRADING_DAY, 1.1, FETCHED_AT)],
+        )
+
+    check = _results()["cash_dividend_changes_share_factor"]
+
+    assert check["count"] == 1
+    assert "分红不改变份额" in check["violations"][0]["detail"]
+
+
+def test_cash_dividend_with_stable_share_factor_is_clean(tmp_path, monkeypatch):
+    _prepare(tmp_path, monkeypatch)
+    previous_day = TRADING_DAY - timedelta(days=1)
+    with connect(settings.database_path) as con:
+        con.execute(
+            """
+            INSERT INTO core.etf_corporate_action
+                (security_id, action_date, action_type, cash_distribution,
+                 source, fetched_at, quality_status)
+            VALUES ('588200.SH', ?, 'DIVIDEND', 0.1, 'test', ?, 'PASS')
+            """,
+            [TRADING_DAY, FETCHED_AT],
+        )
+        con.executemany(
+            """
+            INSERT INTO mart.etf_adjusted_daily
+                (security_id, trade_date, adjustment_factor, share_adjustment_factor,
+                 calculation_version, calculated_at)
+            VALUES ('588200.SH', ?, ?, 1.0, 'adjust_v1', ?)
+            """,
+            [(previous_day, 1.0, FETCHED_AT), (TRADING_DAY, 1.0256, FETCHED_AT)],
+        )
+
+    assert _results()["cash_dividend_changes_share_factor"]["count"] == 0
