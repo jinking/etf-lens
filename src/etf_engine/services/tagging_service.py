@@ -12,10 +12,11 @@
 from collections import defaultdict
 from datetime import date
 
+from etf_engine.domain.versions import TAG_VERSION
 from etf_engine.repositories.stock_industry_repository import StockIndustryRepository
 
 #: 标签计算口径版本。阈值或算法变化时必须升级。
-INDUSTRY_TAGGING_VERSION = "tag_v1"
+INDUSTRY_TAGGING_VERSION = TAG_VERSION
 
 #: 第一大行业占比达到该阈值时标记为主要行业。
 PRIMARY_INDUSTRY_THRESHOLD = 0.30

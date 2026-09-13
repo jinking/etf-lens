@@ -2,6 +2,7 @@ import socket
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from typing import cast
 
 from tenacity import (
     RetryError,
@@ -85,4 +86,4 @@ def call_with_deadline[T](call: Callable[[], T], *, timeout: float) -> T:
         raise TimeoutError(f"上游调用超过 {timeout}s 未返回")
     if "error" in outcome:
         raise outcome["error"]
-    return outcome["value"]
+    return cast(T, outcome["value"])

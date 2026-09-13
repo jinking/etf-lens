@@ -11,6 +11,7 @@
 
 import time
 from datetime import date, datetime, timedelta
+from functools import partial
 
 from etf_engine.config.settings import settings
 from etf_engine.domain.quality import DataQualityIssue, error
@@ -72,17 +73,19 @@ def sync_market_turnover(
             for source_cls in registry.market_turnover_sources:
                 source = source_cls()
                 capability = f"market_turnover_{source.source_name}"
+
+                def _fetch_turnover(source=source, day=day):
+                    """单日单所的成交额拉取（带硬超时，供重试包装）。"""
+                    return call_with_deadline(
+                        partial(source.fetch_turnover_with_issues, day),
+                        timeout=UPSTREAM_TIMEOUT_SECONDS,
+                    )
+
                 try:
                     with track_source_health(source.source_name, capability):
                         # 超时兜底 + 瞬时错误退避：单点抖动只影响该日该交易所。
                         with socket_timeout(UPSTREAM_TIMEOUT_SECONDS):
-                            rows, source_issues = with_retry(
-                                lambda source=source, day=day: call_with_deadline(
-                                    lambda: source.fetch_turnover_with_issues(day),
-                                    timeout=UPSTREAM_TIMEOUT_SECONDS,
-                                ),
-                                attempts=2,
-                            )
+                            rows, source_issues = with_retry(_fetch_turnover, attempts=2)
                 except Exception as exc:
                     # 单点失败只影响该交易所该日，其余交易日继续。
                     issues.append(

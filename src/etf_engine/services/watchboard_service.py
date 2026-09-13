@@ -6,6 +6,7 @@
 
 from datetime import date
 
+from etf_engine.domain.versions import FLOW_VERSION
 from etf_engine.repositories.index_repository import IndexRepository
 from etf_engine.repositories.market_repository import MarketRepository
 from etf_engine.repositories.trading_calendar_repository import TradingCalendarRepository
@@ -131,9 +132,7 @@ class WatchboardService:
         for index_id, points_by_date in by_canonical.items():
             points = [points_by_date[key] for key in sorted(points_by_date)]
             cumulative = cumulative_series(points)
-            contributing = [
-                point for point in points if point["contributor_count"] > 0
-            ]
+            contributing = [point for point in points if point["contributor_count"] > 0]
             if not contributing:
                 # 一只成员都没有日度数据（例如创业板指全是深市 ETF）：
                 # 曲线画不出来就如实不画，不用 0 线冒充。
@@ -170,7 +169,7 @@ class WatchboardService:
         rendered_ids = {item["index_id"] for item in series}
         return {
             "metric": "estimated_net_subscription_1d",
-            "calculation_version": "flow_v1",
+            "calculation_version": FLOW_VERSION,
             "unit": "元",
             "series": series,
             "window": {
@@ -211,17 +210,13 @@ class WatchboardService:
 
         def total(rows: list[dict]) -> float | None:
             values = [
-                row["raised_shares_total"]
-                for row in rows
-                if row["raised_shares_total"] is not None
+                row["raised_shares_total"] for row in rows if row["raised_shares_total"] is not None
             ]
             return sum(values) if values else None
 
         recent_total, previous_total = total(recent), total(previous)
         change_pct = (
-            (recent_total / previous_total - 1) * 100
-            if recent_total and previous_total
-            else None
+            (recent_total / previous_total - 1) * 100 if recent_total and previous_total else None
         )
         return {
             "monthly": series,
@@ -238,9 +233,11 @@ class WatchboardService:
     @staticmethod
     def _quadrant_points() -> list[dict]:
         """量价四象限用的逐日散点（位置分位 × 量比）。"""
-        close_series = IndexRepository().quote_history(
-            [DEFAULT_BROAD_INDEX_ID], limit=1500
-        ).get(DEFAULT_BROAD_INDEX_ID, [])
+        close_series = (
+            IndexRepository()
+            .quote_history([DEFAULT_BROAD_INDEX_ID], limit=1500)
+            .get(DEFAULT_BROAD_INDEX_ID, [])
+        )
         turnover_series = MarketRepository().turnover_series(limit=250)
         return quadrant_series(close_series, turnover_series)
 

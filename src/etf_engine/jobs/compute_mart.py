@@ -3,6 +3,7 @@ import pandas as pd
 from etf_engine.config.settings import settings
 from etf_engine.db.connection import connect
 from etf_engine.domain.quality import error
+from etf_engine.domain.versions import FLOW_VERSION, METRIC_VERSION
 from etf_engine.ingestion.run_recorder import IngestionRunRecorder
 from etf_engine.jobs.sync_calendar import ensure_market_calendar
 from etf_engine.repositories.mart_repository import MartRepository
@@ -21,11 +22,7 @@ def _drop_non_trading_days(df: pd.DataFrame, calendar, kind: str, security_id: s
     "周六的数据"并长期污染 mart；而整只 ETF 直接跳过又会丢掉合法的历史。
     因此这里剔除非法日期、保留其余观测，并把剔除动作写进 quality_issue。
     """
-    invalid = [
-        day
-        for day in df.index
-        if calendar.covers(day) and not calendar.is_trading_day(day)
-    ]
+    invalid = [day for day in df.index if calendar.covers(day) and not calendar.is_trading_day(day)]
     issues = [
         error(
             f"{kind}_trade_date_not_trading_day",
@@ -96,9 +93,7 @@ def compute_mart(security_ids: list[str] | None = None) -> dict:
                     df_q = pd.DataFrame(
                         q_rows, columns=["trade_date", "close", "turnover_amount"]
                     ).set_index("trade_date")
-                    df_q, invalid_q = _drop_non_trading_days(
-                        df_q, calendar, "metric", sid
-                    )
+                    df_q, invalid_q = _drop_non_trading_days(df_q, calendar, "metric", sid)
                     rejected += len(invalid_q)
                     issues.extend(invalid_q)
 
@@ -126,7 +121,7 @@ def compute_mart(security_ids: list[str] | None = None) -> dict:
                             "avg_turnover_amount_60d": average_turnover_amount(
                                 df_q["turnover_amount"], 60
                             ),
-                            "calculation_version": "metric_v1",
+                            "calculation_version": METRIC_VERSION,
                         }
                     )
 
@@ -161,7 +156,7 @@ def compute_mart(security_ids: list[str] | None = None) -> dict:
                             "consecutive_share_inflow_days": flow.consecutive_share_inflow_days,
                             "consecutive_share_outflow_days": flow.consecutive_share_outflow_days,
                             "is_estimated": True,
-                            "calculation_version": "flow_v1",
+                            "calculation_version": FLOW_VERSION,
                         }
                     )
 

@@ -18,6 +18,7 @@ import pandas as pd
 from etf_engine.config.settings import settings
 from etf_engine.db.connection import connect
 from etf_engine.domain.quality import error
+from etf_engine.domain.versions import FLOW_VERSION
 from etf_engine.ingestion.run_recorder import IngestionRunRecorder
 from etf_engine.jobs.sync_calendar import ensure_market_calendar
 from etf_engine.repositories.mart_repository import MartRepository
@@ -103,7 +104,7 @@ def backfill_flow_history(security_ids: list[str] | None = None) -> dict:
                         "consecutive_share_inflow_days": flow.consecutive_share_inflow_days,
                         "consecutive_share_outflow_days": flow.consecutive_share_outflow_days,
                         "is_estimated": True,
-                        "calculation_version": "flow_v1",
+                        "calculation_version": FLOW_VERSION,
                     }
                 )
 
@@ -121,9 +122,7 @@ def backfill_flow_history(security_ids: list[str] | None = None) -> dict:
             "run_id": run_id,
             "etf_count": len(grouped),
             "rows_written": written,
-            "date_range": (
-                [dates[0].isoformat(), dates[-1].isoformat()] if dates else None
-            ),
+            "date_range": ([dates[0].isoformat(), dates[-1].isoformat()] if dates else None),
             "quality_issues": issues_written,
         }
     except Exception as exc:

@@ -19,7 +19,7 @@ from datetime import date
 from enum import StrEnum
 from statistics import mean
 
-PULSE_VERSION = "pulse_v2"
+from etf_engine.domain.versions import PULSE_VERSION
 
 #: 状态确认所需的天数：原始信号必须连续这么多天落在新状态，才真的切过去。
 #: v1 的阈值偏紧，实测量能层 250 天切换 77 次（平均持续 3.2 天），
@@ -401,9 +401,7 @@ def quadrant_series(
     只有两边都有观测的交易日才产出点，缺失不插值。
     """
     closes_by_date = {
-        row["trade_date"]: row["close"]
-        for row in close_series
-        if row.get("close") is not None
+        row["trade_date"]: row["close"] for row in close_series if row.get("close") is not None
     }
     ordered_dates = sorted(closes_by_date)
     amounts = [row.get("turnover_amount_total") for row in turnover_series]

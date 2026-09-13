@@ -4,6 +4,7 @@ import pandas as pd
 
 from etf_engine.domain.core_metrics import CoreMetricsQuality, ETFCoreMetrics, TrackingIndex
 from etf_engine.domain.identifiers import SecurityId
+from etf_engine.domain.versions import FLOW_VERSION
 from etf_engine.ingestion.normalizer import normalize_premium_discount
 from etf_engine.repositories.core_metrics_repository import CoreMetricsRepository
 from etf_engine.research.corporate_actions import has_unadjusted_jump
@@ -194,7 +195,7 @@ class ETFCoreMetricsService:
                 True if estimated_subscription_20d is not None else None
             ),
             estimated_net_subscription_calculation_version=(
-                "flow_v1" if estimated_subscription_20d is not None else None
+                FLOW_VERSION if estimated_subscription_20d is not None else None
             ),
             market_return_20d=market_return_20d,
             market_return_60d=market_return_60d,

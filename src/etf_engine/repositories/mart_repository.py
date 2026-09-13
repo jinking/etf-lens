@@ -2,6 +2,7 @@ from datetime import datetime
 
 from etf_engine.config.settings import settings
 from etf_engine.db.connection import connect
+from etf_engine.domain.versions import FLOW_VERSION, METRIC_VERSION
 
 
 class MartRepository:
@@ -28,7 +29,7 @@ class MartRepository:
                     r.get("avg_turnover_amount_5d"),
                     r.get("avg_turnover_amount_20d"),
                     r.get("avg_turnover_amount_60d"),
-                    r.get("calculation_version", "metric_v1"),
+                    r.get("calculation_version", METRIC_VERSION),
                     now,
                 )
             )
@@ -86,7 +87,7 @@ class MartRepository:
                     r.get("consecutive_share_inflow_days"),
                     r.get("consecutive_share_outflow_days"),
                     r.get("is_estimated", True),
-                    r.get("calculation_version", "flow_v1"),
+                    r.get("calculation_version", FLOW_VERSION),
                     now,
                 )
             )

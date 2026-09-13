@@ -80,7 +80,8 @@ def _scalar(con, sql: str, values: list | None = None):
 
 
 def _rows(con, sql: str, values: list | None = None) -> list[tuple]:
-    return con.execute(sql, values or []).fetchall()
+    # 显式转成 tuple：DuckDB 返回的是它自己的行对象，注解成 list[tuple] 会骗 mypy。
+    return [tuple(row) for row in con.execute(sql, values or []).fetchall()]
 
 
 def _non_trading_day_violations(con) -> list[dict]:
@@ -237,9 +238,7 @@ def _missing_source_metadata_violations(con) -> list[dict]:
             """,
         )
         if count:
-            violations.append(
-                {"dataset": table, "detail": f"{count} 行缺少 source / fetched_at"}
-            )
+            violations.append({"dataset": table, "detail": f"{count} 行缺少 source / fetched_at"})
     return violations
 
 
@@ -278,9 +277,7 @@ def _holdings_without_report_date(con) -> list[dict]:
     )
     if not count:
         return []
-    return [
-        {"dataset": "core.etf_holding_disclosure", "detail": f"{count} 行没有 report_date"}
-    ]
+    return [{"dataset": "core.etf_holding_disclosure", "detail": f"{count} 行没有 report_date"}]
 
 
 def _incomplete_turnover_violations(con) -> list[dict]:
