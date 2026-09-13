@@ -170,12 +170,19 @@ Phase 1  统一 Research Version Resolver          ✅ 完成
 Phase 2  拆分 Price / NAV / Share 三套复权因子    ✅ 完成
          （P0-2：分红不再改变份额因子；新增 audit 规则
           cash_dividend_changes_share_factor + 分红/组合测试）
-Phase 3  修复 GitHub Actions 普通 CI             ⬜ 未开始
-         （P0-3：CI 需要 -m "not live" 与夹具库）
-Phase 4  Point-in-Time 覆盖矩阵                  ⬜ 未开始
-         （P1-1：Tag / Holdings / Peer / Profile 尚未受 as-of 约束）
-Phase 5  历史验证命名与能力边界                  ⬜ 未开始
-Phase 6  V2.1 最终验收（Case A–D）                ⬜ 未开始
+Phase 3  修复 GitHub Actions 普通 CI             ✅ 完成
+         （P0-3：CI 改用 pytest -m "not live"；live 用例只在 live-smoke 跑；
+          顺手修掉 mcp 2.x 的 SDK 改名，普通 CI 恢复 green）
+Phase 4  Point-in-Time 覆盖矩阵                  ✅ 完成
+         （P1-1：Holdings / Tag / Tracking Index / Peer / Profile 全部受 as-of 约束；
+          audit 规则 research_query_requires_explicit_version 覆盖 P0-1 的复发路径；
+          docs/POINT_IN_TIME_COVERAGE.md 给出 15 项数据集矩阵）
+Phase 5  历史 regime 验证命名与能力边界          ✅ 完成
+         （P1-2：research/regime_validation.py 成为实现，walk_forward 只做兼容转发；
+          按自然年固定 regime，daily / transition 两套样本分开统计；
+          历史覆盖扩到 4 年量级，docs/REGIME_VALIDATION.md 可重复生成）
+Phase 6  V2.1 最终验收（Case A–E）                ⬜ 未开始
+         （scripts/v2_acceptance.py 重跑 + docs/V2_1_ACCEPTANCE.md）
 ```
 
 ```text
@@ -206,10 +213,12 @@ Phase 3  Benchmark / Peer 相对研究           ✅ 完成
          docs/PEER_RESEARCH.md
 Phase 4  Watchboard 方法学验证（walk-forward）✅ 完成
          research/walk_forward.py（状态分布/持续/切换/后续 5-20-60 日收益与回撤分布）
+         → V2.1 Phase 5 起实现迁到 research/regime_validation.py，
+           旧模块只保留兼容转发；能力名统一为 Historical Regime Validation
          jobs/compute_market_norm.py + mart.market_norm_daily（market_norm_v1）
          research/market_pulse_v3.py（实验版：只换标准化输入，不替换 pulse_v2、不落库）
          jobs/validate_pulse.py + etf market-norm / etf validate-pulse
-         docs/PULSE_VALIDATION.md（真实 250 个交易日的历史验证报告）
+         docs/REGIME_VALIDATION.md（分年 + daily/transition 两套样本的历史验证报告）
 Phase 5  工程可靠性（uv.lock / CI / 文档漂移自检）✅ 完成
          uv.lock（uv sync --all-extras --frozen 可复现）
          .github/workflows/ci.yml（ruff/mypy/pytest/自检，不联网）

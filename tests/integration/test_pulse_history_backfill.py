@@ -15,8 +15,9 @@ from etf_engine.config.settings import settings
 from etf_engine.db.connection import connect
 from etf_engine.db.migrate import run_migrations
 from etf_engine.domain.enums import Exchange, QualityStatus
-from etf_engine.domain.models import MarginBalance, MarketTurnover, SourceMeta
+from etf_engine.domain.models import IndexQuote, MarginBalance, MarketTurnover, SourceMeta
 from etf_engine.jobs.compute_pulse import backfill_pulse_history
+from etf_engine.repositories.index_repository import IndexRepository
 from etf_engine.repositories.market_repository import MarketRepository
 from etf_engine.repositories.trading_calendar_repository import TradingCalendarRepository
 
@@ -139,3 +140,40 @@ def test_backfill_is_idempotent(tmp_path, monkeypatch):
 
     assert first["rows_written"] == second["rows_written"] == 10
     assert before == after
+
+
+def test_backfill_warmup_window_keeps_the_first_written_day_computable(tmp_path, monkeypatch):
+    """只落 ``days`` 天，但更早的日子要当预热：否则回放窗口最前面会凭空 UNKNOWN。
+
+    位置分位需要 250 日窗口 + 60 个最小样本；没有预热时第 1 个写出的交易日
+    只有它自己，分位必然是 NULL——那是回放方法的缺陷，不是市场状态。
+    """
+    monkeypatch.setattr(settings, "database_path", tmp_path / "etf.duckdb")
+    run_migrations()
+    days = _trading_days(300)
+    _seed(days)
+    IndexRepository().upsert_quotes(
+        [
+            IndexQuote(
+                index_id="000300",
+                trade_date=day,
+                close=Decimal(str(4000 + index)),
+                source_meta=_meta("sina"),
+            )
+            for index, day in enumerate(days)
+        ]
+    )
+
+    result = backfill_pulse_history(days=50)
+
+    assert result["rows_written"] == 50
+    with connect(settings.database_path) as con:
+        rows = con.execute(
+            "SELECT trade_date, broad_index_position_pct_250d"
+            " FROM mart.market_pulse_daily ORDER BY trade_date"
+        ).fetchall()
+
+    # 写入的正好是最后 50 天，而不是全部 300 天
+    assert [row[0] for row in rows] == days[-50:]
+    # 预热生效：写出的第一天（序列第 251 天）已经能用 250 日窗口算分位
+    assert rows[0][1] is not None

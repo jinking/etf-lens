@@ -24,6 +24,13 @@ from etf_engine.sources.akshare.valuation import ALL_A_INDEX_ID
 WINDOW_250D = 250
 WINDOW_3Y = 750
 
+#: 历史回放的默认交易日数。~3.2 年，满足升级方案 §17 的"最低 3 年"；
+#: 数据够长时可以传更大的 ``days``（上限由成交额/两融序列长度决定）。
+DEFAULT_BACKFILL_DAYS = 800
+#: 回放时额外多取的"预热"交易日：位置分位需要 250 日窗口 + 最小样本量，
+#: 不预热会让回放窗口的最前面几十天凭空变成 UNKNOWN。
+BACKFILL_WARMUP_DAYS = WINDOW_250D + 60
+
 #: 估值分位的最小样本量（月度观测）。3 年月度数据即可起步。
 MIN_VALUATION_SAMPLES = 36
 TEN_YEARS_DAYS = 3653
@@ -325,7 +332,7 @@ def _basket_sums_by_date(index_ids: list[str], asof: date) -> dict[date, dict]:
 
 
 def backfill_pulse_history(
-    days: int = 250,
+    days: int = DEFAULT_BACKFILL_DAYS,
     asof: date | None = None,
 ) -> dict:
     """逐日回放三层状态，写入 ``mart.market_pulse_daily``（供热力图）。
@@ -337,6 +344,9 @@ def backfill_pulse_history(
     * 第三层用 ``mart.etf_flow_daily`` 的历史（由 ``etf backfill-flow`` 回填），
       **篮子成员按当前口径**，成员变动未回溯；
     * 折溢价依赖 IOPV 快照，只有最新一天有值，历史行为 NULL；
+    * 落库只写最后 ``days`` 个交易日，但更早的 ``BACKFILL_WARMUP_DAYS`` 天会一起
+      参与计算（分位窗口与确认机制需要前文），否则回放窗口最前面几十天会
+      被算成 UNKNOWN——那是方法的缺陷，不是市场状态；
     * 回放行是"用今天存下的事实按同一条规则重算"，不是当时写下的快照——
       如果上游后来修正过历史事实，回放结果会与当日所见不同。
     """
@@ -346,11 +356,13 @@ def backfill_pulse_history(
     run_id = recorder.start("market_pulse_backfill", "internal_engine", asof)
 
     try:
-        margin_series = market_repository.margin_series(limit=400)
-        turnover_series = market_repository.turnover_series(limit=400)
+        # 预热段只用于计算，不写库：写成行的最后 `days` 天才有完整的历史窗口，
+        # 否则回放窗口最前面的位置分位会因为样本不足被算成 UNKNOWN。
+        fetch_limit = days + BACKFILL_WARMUP_DAYS
+        margin_series = market_repository.margin_series(limit=fetch_limit)
+        turnover_series = market_repository.turnover_series(limit=fetch_limit)
         if not turnover_series:
             raise ValueError("成交额序列为空：先执行 etf sync-market")
-        turnover_series = turnover_series[-days:]
 
         index_id = DEFAULT_BROAD_INDEX_ID
         closes = IndexRepository().quote_history([index_id], limit=1500).get(index_id, [])
@@ -406,9 +418,9 @@ def backfill_pulse_history(
             for key in ("liquidity", "volume", "etf")
         }
 
-        rows: list[dict] = []
+        all_rows: list[dict] = []
         for index, entry in enumerate(raw_entries):
-            rows.append(
+            all_rows.append(
                 pulse.build_pulse_row(
                     trade_date=entry["trade_date"],
                     liquidity=entry["liquidity"],
@@ -424,6 +436,8 @@ def backfill_pulse_history(
                     },
                 )
             )
+        # 只落 `days` 个交易日的行；更早的日子只作为预热参与确认与分位计算。
+        rows = all_rows[-days:]
 
         for row in rows:
             market_repository.upsert_pulse(row)

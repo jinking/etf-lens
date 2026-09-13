@@ -226,7 +226,7 @@ pulse_v2  2026-09-12  加确认机制：某层原始信号必须连续 2 个交�
 
 ```text
 etf backfill-flow     # 按份额历史逐日回填 mart.etf_flow_daily（约 10 分钟，仅每周跑）
-etf backfill-pulse    # 逐日回放三层状态，写满 250 个交易日
+etf backfill-pulse    # 逐日回放三层状态，默认写满 800 个交易日（约 3.2 年，见升级方案 §17）
 ```
 
 三条纪律：
@@ -239,6 +239,14 @@ etf backfill-pulse    # 逐日回放三层状态，写满 250 个交易日
 
 另一个已知近似：**篮子成员按当前口径回放**，成员变动未回溯（`etf_index_map` 有
 `valid_from`，但历史篮子权重不值得在这个阶段引入）。
+
+回放出来的历史随后由 **Historical Regime Validation** 检验
+（`etf validate-pulse --write-doc` → `docs/REGIME_VALIDATION.md`）：
+先按预先固定的 regime（自然年）切片，逐段给出覆盖率、UNKNOWN 占比、状态分布、
+切换次数、平均持续，以及 5/20/60 日后续收益与最大回撤；每个
+`(状态, 窗口)` 同时给出 **daily**（每天都算）与 **transition**
+（只算进入该状态的那一天）两套样本，避免把连续 20 天"偏多"当成 20 个独立事件。
+它只描述事实，**不做阈值寻优**——为了让历史收益更好而调阈值被明确排除。
 
 ## 4. 架构落位
 
@@ -317,7 +325,8 @@ Fetch（适配器）
 - [x] 篮子覆盖：`sync-fund-profile` + `sync-index-map` 批量扩覆盖（篮子 5 → 38 只）；
 - [x] MCP 工具 `get_market_pulse`（不返回画图用的长序列）；
 - [x] 调度模板：`scripts/run_daily.sh` / `run_weekly.sh` + launchd plist；
-- [x] 状态历史热力图：`etf backfill-flow` + `etf backfill-pulse` 回放 250 个交易日；
+- [x] 状态历史热力图：`etf backfill-flow` + `etf backfill-pulse` 逐日回放
+      （V2.1 Phase 5 起默认覆盖 800 个交易日，报告见 `docs/REGIME_VALIDATION.md`）；
 - [x] 边际变化可见化：`pulse_v2` 确认机制（原始信号 vs 确认状态）+ 切换事件列表
       （领变层 / 资金先行 / 量能确认 / 大钱动作 / 多层共振）；
 - [x] 篮子净申购累积曲线（按跟踪指数，带成员覆盖率；深市 ETF 待逐日积累后自动补齐）；

@@ -119,10 +119,10 @@ def market_norm_cmd(
 @app.command("validate-pulse")
 def validate_pulse_cmd(
     asof_date: str = typer.Option(None, "--asof", help="as-of 日期"),
-    write_doc: bool = typer.Option(False, "--write-doc", help="写入 docs/PULSE_VALIDATION.md"),
+    write_doc: bool = typer.Option(False, "--write-doc", help="写入 docs/REGIME_VALIDATION.md"),
     json_output: bool = typer.Option(False, "--json", help="输出完整 JSON（含 Markdown）"),
 ):
-    """用历史数据验证 pulse_v2 的稳定性（只验证，不做阈值寻优）。"""
+    """Historical Regime Validation：分年验证 pulse_v2 的稳定性（不做阈值寻优）。"""
     parsed = date.fromisoformat(asof_date) if asof_date else None
     result = validate_pulse(asof=parsed, write_doc=write_doc)
     if json_output:
@@ -132,9 +132,20 @@ def validate_pulse_cmd(
         typer.echo(result)
         return
     typer.echo(
-        f"覆盖 {result['days']} 个交易日 · UNKNOWN {result['unknown_ratio']:.1%} · "
-        f"切换 {result['switch_count']} 次 · 基准 {result['benchmark_index']}"
+        f"覆盖 {result['days']} 个交易日（约 {result['coverage_years']} 年）· "
+        f"UNKNOWN {result['unknown_ratio']:.1%} · 切换 {result['switch_count']} 次 · "
+        f"基准 {result['benchmark_index']}"
     )
+    typer.echo(
+        f"样本：daily {result['daily_sample_count']} · "
+        f"transition {result['transition_sample_count']}"
+    )
+    for regime in result.get("regimes", []):
+        typer.echo(
+            f"  {regime['label']}: {regime['days']} 天 · 切换 {regime['switch_count']} 次 · "
+            f"UNKNOWN {regime['unknown_ratio']:.1%} · "
+            f"daily {regime['daily_sample_count']} / transition {regime['transition_sample_count']}"
+        )
     for item in result["states"]:
         duration = item["average_duration"]
         typer.echo(
@@ -548,7 +559,9 @@ def backfill_flow_cmd(
 
 @app.command("backfill-pulse")
 def backfill_pulse_cmd(
-    days: int = typer.Option(250, "--days", "-d", help="回放的交易日数量"),
+    days: int = typer.Option(
+        800, "--days", "-d", help="回放的交易日数量（默认约 3.2 年，见升级方案 §17）"
+    ),
     asof_date: str | None = typer.Option(None, "--asof-date", help="回放的截止交易日"),
 ):
     """逐日回放三层状态，写入 mart.market_pulse_daily（状态历史热力图用）。"""

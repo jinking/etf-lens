@@ -133,15 +133,47 @@ def test_validate_pulse_reports_state_mix_and_forward_returns(tmp_path, monkeypa
     assert states["偏多"]["days"] == 20
     assert states["防守"]["days"] == 20
     assert result["switch_count"] == 1
+    # 升级方案 §19：daily 与 transition 两套样本必须同时给出
+    assert result["daily_sample_count"] >= result["transition_sample_count"]
+    assert result["transition_sample_count"] > 0
+    # 升级方案 §18：按预先固定的 regime（自然年）切片
+    assert [item["label"] for item in result["regimes"]] == ["2026"]
+    assert result["regimes"][0]["days"] == 40
 
 
 def test_validate_pulse_writes_the_document(tmp_path, monkeypatch):
     _prepare(tmp_path, monkeypatch)
-    target = tmp_path / "PULSE_VALIDATION.md"
+    target = tmp_path / "REGIME_VALIDATION.md"
 
     result = validate_pulse(write_doc=True, doc_path=target)
 
     assert result["doc_path"] == str(target)
     text = target.read_text(encoding="utf-8")
     assert "覆盖交易日" in text
+    assert "daily 样本" in text
+    assert "transition 样本" in text
+    assert "## 4. 分 regime 视图" in text
     assert "阈值优化被明确排除" in text
+
+
+def test_validate_pulse_counts_the_overall_unknown_state(tmp_path, monkeypatch):
+    """``overall_state`` 的"数据不足"就是 UNKNOWN；不能拿 LayerState 的标签去匹配。
+
+    匹配错了会出现两个错：UNKNOWN 占比永远是 0%，且"数据不足"被当成一个
+    真实状态参与后续收益统计。
+    """
+    _prepare(tmp_path, monkeypatch)
+    with connect(settings.database_path) as con:
+        con.execute(
+            """
+            UPDATE mart.market_pulse_daily SET overall_state = '数据不足'
+            WHERE trade_date >= ?
+            """,
+            [DAYS[-3]],
+        )
+
+    result = validate_pulse()
+
+    assert result["unknown_ratio"] == pytest.approx(3 / 40)
+    unknown = next(item for item in result["states"] if item["state"] == "数据不足")
+    assert unknown["days"] == 3
