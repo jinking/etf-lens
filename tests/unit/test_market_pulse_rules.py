@@ -180,7 +180,12 @@ def test_confirm_states_requires_two_consecutive_days():
     # 第一天直接采用；STRONG 反复出现但不连续 → 不确认；
     # 连续两天 STRONG 才切换；随后单日 WEAK 不切换
     assert confirm_states(raw) == [
-        "NEUTRAL", "NEUTRAL", "NEUTRAL", "NEUTRAL", "STRONG", "STRONG",
+        "NEUTRAL",
+        "NEUTRAL",
+        "NEUTRAL",
+        "NEUTRAL",
+        "STRONG",
+        "STRONG",
     ]
 
 
@@ -203,9 +208,7 @@ def test_step_confirmed_matches_full_replay():
     confirmed = None
     previous_raw = None
     for value in raw:
-        confirmed = step_confirmed(
-            confirmed_prev=confirmed, raw_prev=previous_raw, raw_today=value
-        )
+        confirmed = step_confirmed(confirmed_prev=confirmed, raw_prev=previous_raw, raw_today=value)
         stepwise.append(confirmed)
         previous_raw = value
     assert stepwise == full

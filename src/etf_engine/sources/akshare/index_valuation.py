@@ -69,9 +69,7 @@ def parse_index_valuation_frame(
         values = {target: _decimal(row.get(source)) for source, target in _COLUMNS.items()}
         if values["pe_ttm"] is None and values["pe_static"] is None:
             # 滚动 PE 是分位计算的主字段：它缺失的行不入库。
-            issues.append(
-                warn("index_valuation_pe_missing", f"{index_id} {trade_date} 市盈率为空")
-            )
+            issues.append(warn("index_valuation_pe_missing", f"{index_id} {trade_date} 市盈率为空"))
             continue
         rows.append(
             IndexValuation(

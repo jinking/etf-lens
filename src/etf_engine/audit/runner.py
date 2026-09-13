@@ -40,9 +40,7 @@ def run_audit(
 
     checks.extend(run_data_rules(database_path))
 
-    errors = sum(
-        check["count"] for check in checks if check["severity"] == SEVERITY_ERROR
-    )
+    errors = sum(check["count"] for check in checks if check["severity"] == SEVERITY_ERROR)
     warnings = sum(check["count"] for check in checks if check["severity"] == SEVERITY_WARN)
     return {
         "status": "PASS" if errors == 0 else "FAIL",

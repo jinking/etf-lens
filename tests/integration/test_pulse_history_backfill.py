@@ -25,7 +25,9 @@ FETCHED_AT = datetime(2026, 9, 12, 18, 0)
 
 def _meta(source: str) -> SourceMeta:
     return SourceMeta(
-        source=source, upstream_source=source, fetched_at=FETCHED_AT,
+        source=source,
+        upstream_source=source,
+        fetched_at=FETCHED_AT,
         quality_status=QualityStatus.PASS,
     )
 
@@ -43,22 +45,22 @@ def _trading_days(count: int) -> list[date]:
 
 
 def _seed(days: list[date]) -> None:
-    TradingCalendarRepository().upsert_many(
-        days, source="test", upstream_source="test"
-    )
+    TradingCalendarRepository().upsert_many(days, source="test", upstream_source="test")
     repository = MarketRepository()
     for index, day in enumerate(days):
         # 成交额始终 1 万亿（稳定的量能），两融持续上升（流动性转强）
         repository.upsert_turnover(
             [
                 MarketTurnover(
-                    trade_date=day, exchange=Exchange.SSE,
+                    trade_date=day,
+                    exchange=Exchange.SSE,
                     turnover_amount=Decimal(str(5e11)),
                     turnover_rate_pct=Decimal("1.20"),
                     source_meta=_meta("sse"),
                 ),
                 MarketTurnover(
-                    trade_date=day, exchange=Exchange.SZSE,
+                    trade_date=day,
+                    exchange=Exchange.SZSE,
                     turnover_amount=Decimal(str(5e11)),
                     turnover_rate_pct=None,
                     source_meta=_meta("szse"),
@@ -69,12 +71,16 @@ def _seed(days: list[date]) -> None:
         repository.upsert_margin(
             [
                 MarginBalance(
-                    trade_date=day, exchange=Exchange.SSE,
-                    margin_balance=Decimal(str(balance)), source_meta=_meta("sse"),
+                    trade_date=day,
+                    exchange=Exchange.SSE,
+                    margin_balance=Decimal(str(balance)),
+                    source_meta=_meta("sse"),
                 ),
                 MarginBalance(
-                    trade_date=day, exchange=Exchange.SZSE,
-                    margin_balance=Decimal(str(balance * 0.9)), source_meta=_meta("szse"),
+                    trade_date=day,
+                    exchange=Exchange.SZSE,
+                    margin_balance=Decimal(str(balance * 0.9)),
+                    source_meta=_meta("szse"),
                 ),
             ]
         )

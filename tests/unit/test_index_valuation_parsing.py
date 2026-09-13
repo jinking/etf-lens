@@ -38,9 +38,7 @@ def _frame(rows: int = 3) -> pd.DataFrame:
 
 
 def test_parse_keeps_all_six_pe_variants():
-    rows, issues = parse_index_valuation_frame(
-        _frame(), index_id="000300", fetched_at=FETCHED_AT
-    )
+    rows, issues = parse_index_valuation_frame(_frame(), index_id="000300", fetched_at=FETCHED_AT)
 
     assert issues == []
     assert len(rows) == 3
@@ -55,9 +53,7 @@ def test_parse_skips_rows_without_pe_and_records_issue():
     frame = _frame()
     frame.loc[0, ["静态市盈率", "滚动市盈率"]] = None
 
-    rows, issues = parse_index_valuation_frame(
-        frame, index_id="000300", fetched_at=FETCHED_AT
-    )
+    rows, issues = parse_index_valuation_frame(frame, index_id="000300", fetched_at=FETCHED_AT)
 
     assert len(rows) == 2
     assert any(issue.rule_name == "index_valuation_pe_missing" for issue in issues)
@@ -98,9 +94,7 @@ def test_persistent_failure_is_recorded_with_attempt_count(monkeypatch):
     monkeypatch.setattr(module.ak, "stock_index_pe_lg", _always_fail)
     source = AkshareIndexValuationSource()
 
-    rows, issues = source.fetch_index_valuations(
-        ["000905"], attempts=2, sleep_seconds=0.0
-    )
+    rows, issues = source.fetch_index_valuations(["000905"], attempts=2, sleep_seconds=0.0)
 
     assert rows == []
     assert issues[0].rule_name == "index_valuation_fetch_failed"

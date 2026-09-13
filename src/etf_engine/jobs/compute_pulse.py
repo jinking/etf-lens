@@ -79,17 +79,14 @@ def compute_index_valuation_percentiles(index_ids: list[str] | None = None) -> l
 
     for index_id in targets:
         series = [
-            row for row in repository.index_valuation_series(index_id)
-            if row["pe_ttm"] is not None
+            row for row in repository.index_valuation_series(index_id) if row["pe_ttm"] is not None
         ]
         if not series:
             continue
         latest = series[-1]
         all_values = [row["pe_ttm"] for row in series]
         ten_year_start = latest["trade_date"] - timedelta(days=TEN_YEARS_DAYS)
-        recent_values = [
-            row["pe_ttm"] for row in series if row["trade_date"] >= ten_year_start
-        ]
+        recent_values = [row["pe_ttm"] for row in series if row["trade_date"] >= ten_year_start]
         rows.append(
             {
                 "index_id": index_id,
@@ -221,9 +218,7 @@ def compute_market_pulse(asof: date | None = None) -> dict:
                 for item in positions
             ]
         )
-        market_repository.upsert_index_valuation_percentiles(
-            compute_index_valuation_percentiles()
-        )
+        market_repository.upsert_index_valuation_percentiles(compute_index_valuation_percentiles())
 
         margin_series = market_repository.margin_series(limit=pulse.POSITION_WINDOW)
         turnover_series = market_repository.turnover_series(limit=pulse.POSITION_WINDOW)
@@ -326,10 +321,7 @@ def _basket_sums_by_date(index_ids: list[str], asof: date) -> dict[date, dict]:
     """
     with connect(settings.database_path) as con:
         rows = con.execute(sql, [*index_ids, asof]).fetchall()
-    return {
-        row[0]: {"net_subscription_5d": row[1], "net_subscription_20d": row[2]}
-        for row in rows
-    }
+    return {row[0]: {"net_subscription_5d": row[1], "net_subscription_20d": row[2]} for row in rows}
 
 
 def backfill_pulse_history(
@@ -367,25 +359,21 @@ def backfill_pulse_history(
 
         last_date = turnover_series[-1]["trade_date"]
         basket_size = len(market_repository.basket_member_ids(broad_index_ids(), last_date))
-        sums_by_date = _basket_sums_by_date(
-            broad_index_ids(), last_date
-        )
+        sums_by_date = _basket_sums_by_date(broad_index_ids(), last_date)
         latest_quote_date = market_repository.latest_quote_date()
-        premium_median = market_repository.basket_premium_median(
-            broad_index_ids(), latest_quote_date
-        ) if latest_quote_date else None
+        premium_median = (
+            market_repository.basket_premium_median(broad_index_ids(), latest_quote_date)
+            if latest_quote_date
+            else None
+        )
 
         # 先算每一天的原始信号，再整段做确认（pulse_v2 的确认机制是跨天的，
         # 逐日单独算不出"连续几天"这个条件）。
         raw_entries: list[dict] = []
         for turnover_row in turnover_series:
             trade_date = turnover_row["trade_date"]
-            margin_prefix = [
-                row for row in margin_series if row["trade_date"] <= trade_date
-            ]
-            turnover_prefix = [
-                row for row in turnover_series if row["trade_date"] <= trade_date
-            ]
+            margin_prefix = [row for row in margin_series if row["trade_date"] <= trade_date]
+            turnover_prefix = [row for row in turnover_series if row["trade_date"] <= trade_date]
             past_closes = [
                 closes_by_date[value] for value in ordered_close_dates if value <= trade_date
             ]
@@ -395,15 +383,11 @@ def backfill_pulse_history(
             volume = pulse.evaluate_volume(turnover_prefix)
             basket = {
                 "basket_size": basket_size,
-                "net_subscription_5d": sums_by_date.get(trade_date, {}).get(
-                    "net_subscription_5d"
-                ),
+                "net_subscription_5d": sums_by_date.get(trade_date, {}).get("net_subscription_5d"),
                 "net_subscription_20d": sums_by_date.get(trade_date, {}).get(
                     "net_subscription_20d"
                 ),
-                "premium_median_pct": (
-                    premium_median if trade_date == latest_quote_date else None
-                ),
+                "premium_median_pct": (premium_median if trade_date == latest_quote_date else None),
             }
             etf_layer = pulse.evaluate_etf_basket(basket)
             raw_entries.append(

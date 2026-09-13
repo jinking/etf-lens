@@ -24,7 +24,9 @@ NON_TRADING_DAY = date(2026, 9, 12)  # 周六
 
 def _meta() -> SourceMeta:
     return SourceMeta(
-        source="test", upstream_source="test", fetched_at=FETCHED_AT,
+        source="test",
+        upstream_source="test",
+        fetched_at=FETCHED_AT,
         quality_status=QualityStatus.PASS,
     )
 
@@ -49,8 +51,11 @@ def test_compute_mart_refuses_non_trading_dates(tmp_path, monkeypatch):
     QuoteRepository().upsert_many(
         [
             ETFQuote(
-                security_id="588200.SH", trade_date=day, close=1.0,
-                turnover_amount=1e8, source_meta=_meta(),
+                security_id="588200.SH",
+                trade_date=day,
+                close=1.0,
+                turnover_amount=1e8,
+                source_meta=_meta(),
             )
             for day in (TRADING_DAY, NON_TRADING_DAY)
         ]
@@ -58,7 +63,10 @@ def test_compute_mart_refuses_non_trading_dates(tmp_path, monkeypatch):
     ShareRepository().upsert_many(
         [
             ETFShare(
-                security_id="588200.SH", trade_date=day, shares=1e9, nav=1.0,
+                security_id="588200.SH",
+                trade_date=day,
+                shares=1e9,
+                nav=1.0,
                 source_meta=_meta(),
             )
             for day in (TRADING_DAY, NON_TRADING_DAY)
@@ -78,15 +86,11 @@ def test_compute_mart_refuses_non_trading_dates(tmp_path, monkeypatch):
         ]
         flow_dates = [
             row[0]
-            for row in con.execute(
-                "SELECT DISTINCT trade_date FROM mart.etf_flow_daily"
-            ).fetchall()
+            for row in con.execute("SELECT DISTINCT trade_date FROM mart.etf_flow_daily").fetchall()
         ]
         issue_rules = {
             row[0]
-            for row in con.execute(
-                "SELECT DISTINCT rule_name FROM ops.quality_issue"
-            ).fetchall()
+            for row in con.execute("SELECT DISTINCT rule_name FROM ops.quality_issue").fetchall()
         }
 
     assert NON_TRADING_DAY not in metric_dates
