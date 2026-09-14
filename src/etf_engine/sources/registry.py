@@ -25,11 +25,17 @@ from etf_engine.sources.szse.market_turnover import SZSEMarketTurnoverSource
 from etf_engine.sources.szse.shares import SZSEETFShareSource
 
 
+from etf_engine.sources.westock.history import WestockETFHistorySource
+from etf_engine.sources.westock.holdings import WestockETFHoldingSource
+from etf_engine.sources.westock.nav import WestockETFNavHistorySource, WestockETFNavSource
+from etf_engine.sources.westock.quotes import WestockETFQuoteSource
+
+
 @dataclass(frozen=True, slots=True)
 class SourceRegistry:
     """V1 默认能力注册表。
 
-    后续接入 HiThink / Wind / Choice 时，不修改 Service 层；
+    后续接入 HiThink / Wind / Choice / WeStock 时，不修改 Service 层；
     只扩展注册表与 capability policy。
 
     Registry 是业务层（``jobs/``）拿到适配器的唯一入口：job 不允许直接
@@ -42,7 +48,6 @@ class SourceRegistry:
     nav_source = AkshareETFNavSource
     nav_history_source = AkshareETFNavHistorySource
     holding_source = AkshareETFHoldingSource
-    holding_source = AkshareETFHoldingSource
     calendar_source = AkshareTradingCalendarSource
     industry_source = AkshareStockIndustrySource
     index_catalog_source = AkshareIndexCatalogSource
@@ -52,6 +57,13 @@ class SourceRegistry:
     fund_profile_source = AkshareFundProfileSource
     corporate_action_source = EastmoneyFundActionSource
     share_sources = (SSEETFShareSource, SZSEETFShareSource)
+
+    #: WeStock (腾讯自选股源) 备选与交叉校验适配器
+    westock_quote_source = WestockETFQuoteSource
+    westock_history_source = WestockETFHistorySource
+    westock_nav_source = WestockETFNavSource
+    westock_nav_history_source = WestockETFNavHistorySource
+    westock_holding_source = WestockETFHoldingSource
 
     #: 看盘台（docs/WATCHBOARD.md）市场层能力。
     market_turnover_sources = (SSEMarketTurnoverSource, SZSEMarketTurnoverSource)
