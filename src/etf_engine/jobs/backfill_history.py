@@ -15,13 +15,22 @@ def backfill_history(
     security_ids: list[str] | None = None,
     days: int = 90,
     top_n: int | None = 20,
+    source_name: str = "akshare",
 ) -> dict:
     """批量回补 ETF 历史日线数据。
 
     如果未指定 security_ids，则默认选取本地最新成交额最高的 top_n 只 ETF。
     """
     repository = QuoteRepository()
-    source = registry.history_source()
+    if source_name == "westock":
+        source = registry.westock_history_source()
+        health_source = "westock"
+        run_type = "westock_history"
+    else:
+        source = registry.history_source()
+        health_source = "akshare/history"
+        run_type = "akshare_history"
+
     recorder = IngestionRunRecorder()
     calendar = ensure_market_calendar()
 
@@ -44,7 +53,7 @@ def backfill_history(
     end_date = calendar.latest_closed_trading_day(datetime.now().astimezone())
     window = calendar.trading_days_back(end_date, days)
     start_date = window[-1] if window else end_date
-    run_id = recorder.start("etf_history", "akshare_history", None)
+    run_id = recorder.start("etf_history", run_type, None)
 
     total_fetched = 0
     total_written = 0
@@ -56,7 +65,7 @@ def backfill_history(
 
     for sid in targets:
         try:
-            with track_source_health("akshare/history", "etf_history"):
+            with track_source_health(health_source, "etf_history"):
                 quotes = source.fetch_history(sid, start_date=start_date, end_date=end_date)
 
             accepted = []

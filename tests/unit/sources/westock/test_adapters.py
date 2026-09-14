@@ -114,3 +114,40 @@ def test_holdings_source_parsing():
     assert holdings[1].stock_id == "600519.SH"
     assert holdings[1].stock_name == "贵州茅台"
     assert holdings[1].weight_pct == Decimal("3.09")
+
+
+def test_profile_source_parsing():
+    from etf_engine.sources.westock.profile import WestockETFProfileSource
+
+    mock_client = MagicMock()
+    mock_output = """
+#### sh511880
+
+| code | name | date | etfType | establishDate | manageInstitution | trusteeInstitution | managementFee | custodyFee | trackIndexName | size | shares | nav |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| sh511880 | 银华日利ETF | 2026-09-14 | 货币 | 2013-04-01 | 银华基金 | 建设银行 | 0.30 | 0.10 | — | 113879286377.38 | 1129972300 | 100.78 |
+"""
+    mock_client.execute.return_value = mock_output
+    from etf_engine.sources.westock.client import WestockClient
+    mock_client.parse_etf_details.side_effect = WestockClient.parse_etf_details
+
+    source = WestockETFProfileSource(client=mock_client)
+    profile = source.fetch_profile("511880.SH")
+
+    assert profile.security_id == "511880.SH"
+    assert profile.fund_name == "银华日利ETF"
+    assert profile.fund_type == "货币"
+    assert profile.established_date == date(2013, 4, 1)
+    assert profile.manager_name == "银华基金"
+    assert profile.custodian_name == "建设银行"
+    assert profile.management_fee_pct == Decimal("0.30")
+    assert profile.custodian_fee_pct == Decimal("0.10")
+
+    aum_list = source.fetch_aum_and_shares(["511880.SH"])
+    assert len(aum_list) == 1
+    item = aum_list[0]
+    assert item["security_id"] == "511880.SH"
+    assert item["reported_aum"] == Decimal("113879286377.38")
+    assert item["shares"] == Decimal("1129972300")
+    assert item["nav"] == Decimal("100.78")
+    assert item["trade_date"] == date(2026, 9, 14)

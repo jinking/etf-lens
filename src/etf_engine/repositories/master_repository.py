@@ -160,3 +160,33 @@ class MasterRepository:
         with connect(settings.database_path) as con:
             con.executemany(sql, rows)
         return len(rows)
+
+    def update_reported_aum(self, updates: list[dict]) -> int:
+        """更新 core.etf_master 的 reported_aum 与 reported_aum_date。
+
+        updates 结构:
+        [{"security_id": "511880.SH", "reported_aum": 113879000000.0, "reported_aum_date": date(2026, 9, 14)}]
+        """
+        if not updates:
+            return 0
+        rows = [
+            (
+                float(u["reported_aum"]) if u.get("reported_aum") is not None else None,
+                u.get("reported_aum_date"),
+                u["security_id"],
+            )
+            for u in updates
+            if u.get("security_id") and u.get("reported_aum") is not None
+        ]
+        if not rows:
+            return 0
+        sql = """
+        UPDATE core.etf_master SET
+            reported_aum = ?,
+            reported_aum_date = COALESCE(?, reported_aum_date),
+            updated_at = now()
+        WHERE security_id = ?
+        """
+        with connect(settings.database_path) as con:
+            con.executemany(sql, rows)
+        return len(rows)

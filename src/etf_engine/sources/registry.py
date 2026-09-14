@@ -28,6 +28,7 @@ from etf_engine.sources.szse.shares import SZSEETFShareSource
 from etf_engine.sources.westock.history import WestockETFHistorySource
 from etf_engine.sources.westock.holdings import WestockETFHoldingSource
 from etf_engine.sources.westock.nav import WestockETFNavHistorySource, WestockETFNavSource
+from etf_engine.sources.westock.profile import WestockETFProfileSource
 from etf_engine.sources.westock.quotes import WestockETFQuoteSource
 
 
@@ -64,6 +65,7 @@ class SourceRegistry:
     westock_nav_source = WestockETFNavSource
     westock_nav_history_source = WestockETFNavHistorySource
     westock_holding_source = WestockETFHoldingSource
+    westock_profile_source = WestockETFProfileSource
 
     #: 看盘台（docs/WATCHBOARD.md）市场层能力。
     market_turnover_sources = (SSEMarketTurnoverSource, SZSEMarketTurnoverSource)

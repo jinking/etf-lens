@@ -13,12 +13,21 @@ from etf_engine.sources.registry import registry
 def sync_holdings(
     security_ids: list[str] | None = None,
     top_n: int | None = 20,
+    source_name: str = "akshare",
 ) -> dict:
-    """拉取 ETF 披露前十大持仓，并自动完成行业穿透打标写入 core.etf_tag。
+    """拉取 ETF 披露持仓/清单，并自动完成行业穿透打标写入 core.etf_tag。
 
     ``top_n <= 0`` 表示覆盖本地有行情的全部 ETF（逐只请求，耗时长，建议显式使用）。
     """
-    source = registry.holding_source()
+    if source_name == "westock":
+        source = registry.westock_holding_source()
+        health_source = "westock"
+        run_type = "westock_holding"
+    else:
+        source = registry.holding_source()
+        health_source = "akshare/eastmoney"
+        run_type = "holding_penetration"
+
     holding_repo = HoldingRepository()
     tag_repo = TagRepository()
     quality_repo = QualityIssueRepository()
@@ -43,7 +52,7 @@ def sync_holdings(
     if not targets:
         return {"status": "SKIPPED", "reason": "No target ETFs found"}
 
-    run_id = recorder.start("etf_holdings_and_tags", "holding_penetration", None)
+    run_id = recorder.start("etf_holdings_and_tags", run_type, None)
     total_holdings = 0
     total_tags = 0
     total_issues = 0
@@ -51,7 +60,7 @@ def sync_holdings(
 
     for sid in targets:
         try:
-            with track_source_health("akshare/eastmoney", "etf_holding"):
+            with track_source_health(health_source, "etf_holding"):
                 holdings, parse_issues = source.fetch_holdings_with_issues(sid)
             total_issues += quality_repo.record(
                 dataset="etf_holding",

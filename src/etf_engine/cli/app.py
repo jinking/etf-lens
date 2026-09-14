@@ -19,6 +19,7 @@ from etf_engine.jobs.compute_market_norm import compute_market_norm
 from etf_engine.jobs.compute_mart import compute_mart
 from etf_engine.jobs.compute_peer_metrics import compute_peer_metrics
 from etf_engine.jobs.compute_pulse import backfill_pulse_history, compute_market_pulse
+from etf_engine.jobs.sync_aum import sync_aum
 from etf_engine.jobs.sync_calendar import sync_calendar
 from etf_engine.jobs.sync_corporate_actions import sync_corporate_actions
 from etf_engine.jobs.sync_fund_profile import sync_fund_profile
@@ -256,8 +257,11 @@ def backfill_history_cmd(
     ),
     days: int = typer.Option(90, "--days", "-d", help="回补历史天数"),
     top_n: int = typer.Option(20, "--top-n", "-n", help="按成交额自动选取前N只ETF"),
+    source: str = typer.Option("westock", "--source", help="历史数据源 (westock / akshare)"),
 ):
-    result = backfill_history(security_ids=security_ids or None, days=days, top_n=top_n)
+    result = backfill_history(
+        security_ids=security_ids or None, days=days, top_n=top_n, source_name=source
+    )
     typer.echo(result)
 
 
@@ -311,8 +315,20 @@ def sync_holdings_cmd(
         None, "--security-id", "-s", help="指定待抓取持仓的证券代码"
     ),
     top_n: int = typer.Option(20, "--top-n", "-n", help="按成交额自动选取前N只ETF"),
+    source: str = typer.Option("westock", "--source", help="数据源 (westock / akshare)"),
 ):
-    result = sync_holdings(security_ids=security_ids or None, top_n=top_n)
+    result = sync_holdings(security_ids=security_ids or None, top_n=top_n, source_name=source)
+    typer.echo(result)
+
+
+@app.command("sync-aum")
+def sync_aum_cmd(
+    security_ids: list[str] = typer.Option(
+        None, "--security-id", "-s", help="指定待同步规模的证券代码"
+    ),
+    top_n: int = typer.Option(50, "--top-n", "-n", help="按成交额自动选取前N只ETF（自动包含货币ETF）"),
+):
+    result = sync_aum(security_ids=security_ids or None, top_n=top_n)
     typer.echo(result)
 
 
